@@ -41,3 +41,52 @@ INFO:     127.0.0.1:65084 - "GET /static/style.css HTTP/1.1" 200 OK
 INFO:     127.0.0.1:65086 - "GET /static/app.js HTTP/1.1" 200 OK
 INFO:     127.0.0.1:65086 - "GET /api/recipes?limit=500 HTTP/1.1" 200 OK
 INFO:     127.0.0.1:65086 - "GET /favicon.ico HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65161 - "POST /api/chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65252 - "POST /api/chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65459 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65459 - "GET /static/style.css HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65461 - "GET /static/app.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65461 - "GET /api/recipes?limit=500 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65459 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65466 - "GET /favicon.ico HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65459 - "GET /static/style.css HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65466 - "GET /static/app.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65466 - "GET /api/recipes?limit=500 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49162 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49162 - "GET /static/style.css HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49164 - "GET /static/app.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49164 - "GET /api/recipes?limit=500 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49162 - "GET /favicon.ico HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49162 - "POST /api/recipes/extract HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49425 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49425 - "GET /static/style.css HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49427 - "GET /static/app.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49427 - "GET /api/recipes?limit=500 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49427 - "GET /favicon.ico HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49591 - "POST /api/chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49664 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49664 - "GET /static/style.css HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:49666 - "GET /static/app.js HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:49666 - "GET /favicon.ico HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49666 - "GET /api/recipes?limit=500 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49720 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49720 - "GET /static/app.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49722 - "GET /static/style.css HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49720 - "GET /api/recipes?limit=500 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49720 - "GET /favicon.ico HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49720 - "POST /api/chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49801 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49801 - "GET /static/style.css HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:49803 - "GET /static/app.js HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:49803 - "GET /api/recipes?limit=500 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49820 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49820 - "GET /static/style.css HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49822 - "GET /static/app.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49822 - "GET /api/recipes?limit=500 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49822 - "GET /favicon.ico HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49836 - "POST /api/chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49893 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49893 - "GET /static/app.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49895 - "GET /static/style.css HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49895 - "GET /api/recipes?limit=500 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49895 - "GET /favicon.ico HTTP/1.1" 200 OK

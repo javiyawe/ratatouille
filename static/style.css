@@ -328,10 +328,35 @@ body {
 
 .msg {
     max-width: 800px;
-    padding: 1.5rem 2rem;
+    padding: 2rem 2.5rem;
     border-radius: 20px;
-    line-height: 1.6;
-    font-size: 1.1rem;
+    line-height: 1.7;
+    font-size: 1.05rem;
+}
+
+.msg.ai h3 {
+    font-family: var(--serif);
+    font-size: 1.5rem;
+    color: var(--accent);
+    margin: 1.5rem 0 1rem;
+    border-bottom: 1px solid rgba(0,0,0,0.05);
+}
+
+.msg.ai ul, .msg.ai ol {
+    margin-bottom: 1.5rem;
+    padding-left: 1.5rem;
+}
+
+.msg.ai li {
+    margin-bottom: 0.5rem;
+}
+
+.msg.ai p {
+    margin-bottom: 1rem;
+}
+
+.msg.ai strong {
+    color: var(--accent);
 }
 
 .msg.ai { align-self: flex-start; background: #f9f9f9; border: 1px solid #eee; border-bottom-left-radius: 4px; position: relative; }
@@ -410,3 +435,13 @@ textarea { width: 100%; height: 250px; border: 1px solid #eee; border-radius: 12
 
 .extract-item { padding: 0.8rem; border-bottom: 1px solid #f9f9f9; font-size: 0.9rem; }
 .extract-item b { color: var(--accent); }
+.scann-effect {
+    border-left: 3px solid var(--accent);
+    padding-left: 1rem;
+    animation: scanPulse 1.5s infinite;
+}
+@keyframes scanPulse { 
+    0% { border-left-color: var(--accent); background: rgba(139, 69, 19, 0.02); }
+    50% { border-left-color: #ddd; background: transparent; }
+    100% { border-left-color: var(--accent); background: rgba(139, 69, 19, 0.02); }
+}

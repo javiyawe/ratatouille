@@ -245,20 +245,72 @@ document.addEventListener('DOMContentLoaded', () => {
     extractBtn.onclick = async () => {
         const text = rawRecipeText.value;
         if (!text) return;
+        
         extractBtn.disabled = true;
         extractBtn.textContent = 'Interpretando...';
-        extractionPreview.innerHTML = '<div class="extract-item">Analizando...</div>';
+        extractionPreview.innerHTML = '<div class="extract-item"><i>Ratatouille está leyendo tu receta...</i></div>';
+        
+        let fullJSON = '';
         try {
-            const res = await fetch('/api/recipes/extract', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({text})});
-            const data = await res.json();
-            extractedRecipe = data.recipe;
+            const res = await fetch('/api/recipes/extract', { 
+                method:'POST', 
+                headers:{'Content-Type':'application/json'}, 
+                body:JSON.stringify({text})
+            });
+
+            if (!res.ok) throw new Error('Servidor no responde');
+
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder();
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                
+                const chunk = decoder.decode(value, { stream: true });
+                fullJSON += chunk;
+                
+                // Mostrar progreso crudo con efecto "escáner"
+                extractionPreview.innerHTML = `
+                    <div class="extract-item scann-effect">
+                        <b>Ratatouille está analizando...</b><br>
+                        <small style="font-family:monospace; opacity:0.5; font-size:0.7rem;">${fullJSON.slice(-80)}</small>
+                    </div>
+                `;
+            }
+
+            // Al terminar, intentamos extraer el JSON de forma robusta
+            fullJSON = fullJSON.trim();
+            const jsonMatch = fullJSON.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+                fullJSON = jsonMatch[0];
+            }
+            
+            extractedRecipe = JSON.parse(fullJSON);
+            
+            // Normalizar por si acaso
+            if (!extractedRecipe.titulo || extractedRecipe.titulo === 'string') {
+                throw new Error('La IA no pudo estructurar la receta correctamente.');
+            }
+            
             extractionPreview.innerHTML = `
                 <div class="extract-item"><b>Título:</b> ${extractedRecipe.titulo}</div>
-                <div class="extract-item"><b>Ingredientes:</b> ${extractedRecipe.ingredientes?.length}</div>
+                <div class="extract-item"><b>Descripción:</b> ${extractedRecipe.descripcion}</div>
+                <div class="extract-item"><b>Ingredientes detectados:</b> ${extractedRecipe.ingredientes?.length || 0}</div>
+                <div class="extract-item"><b>Pasos detectados:</b> ${extractedRecipe.pasos?.length || 0}</div>
             `;
             saveRecipeBtn.style.display = 'block';
-        } catch(e) { extractionPreview.innerHTML = 'Error al analizar.'; }
-        finally { extractBtn.disabled = false; extractBtn.textContent = 'Analizar Texto'; }
+        } catch(e) { 
+            extractionPreview.innerHTML = `
+                <div class="extract-item" style="color:#e74c3c">
+                    <b>Ratatouille ha tenido un contratiempo:</b><br>
+                    No he podido interpretar bien la receta. Por favor, asegúrate de que el texto sea claro o intenta copiarlo de nuevo.
+                </div>`;
+            console.error(e);
+        } finally { 
+            extractBtn.disabled = false; 
+            extractBtn.textContent = 'Analizar Texto'; 
+        }
     };
 
     saveRecipeBtn.onclick = async () => {

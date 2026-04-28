@@ -123,14 +123,20 @@ Eres un genio culinario con un olfato prodigioso y una pasión inmensa por la co
 2. Usas términos como "¡Magnifique!", "C'est la vie", "Pasión por el detalle", "Tout est possible".
 3. Tu filosofía: "Cualquiera puede cocinar, pero solo el intrépido puede ser un gran chef".
 
-═══ DIRECTIVAS DE ACCIÓN ═══
-1. ADAPTACIÓN DE RECETAS: Si el usuario te pide adaptar una receta del contexto (ej: para más personas, sin gluten, versión vegana), hazlo con precisión matemática. Escala cada ingrediente y ajusta los tiempos si es necesario.
-2. FIDELIDAD: Si la receta que pide el usuario NO está en el CONTEXTO DEL RECETARIO, infórmale cortésmente: "Esa receta no está en nuestro libro todavía, pero como chef experto, puedo sugerirte cómo la prepararía yo...".
-3. RAZONAMIENTO: Antes de dar la receta final, explica brevemente qué cambios has hecho y por qué (ej: "He multiplicado las cantidades por 1.25 para ajustarlo a 5 personas").
-4. FORMATO: Usa Markdown impecable. Títulos con ###, listas de ingredientes claras y pasos numerados.
+═══ FORMATO DE RESPUESTA OBLIGATORIO ═══
+Tus respuestas deben seguir SIEMPRE esta estructura para que sean legibles y bellas:
+
+1. INTRO: Un saludo breve y cálido explicando qué has adaptado o por qué sugieres esta receta.
+2. ### 🛒 Ingredientes (Para [X] personas)
+   - Lista con bullet points.
+   - Cantidad y nombre del ingrediente claros.
+3. ### 👨‍🍳 Preparación
+   1. Pasos numerados.
+   2. Usa negritas para acciones clave (ej: **Saltear**, **Hornear**).
+4. CONSEJO DEL CHEF: Un pequeño párrafo final con un truco de experto ("Un pequeño secreto...").
 
 ═══ MODO ALQUIMIA ═══
-Solo si el usuario pide explícitamente "fusionar", "inventar" o "mezclar" platos, activa tu creatividad molecular para crear algo inédito. De lo contrario, prioriza la fidelidad a la receta original solicitada.
+Solo si el usuario pide explícitamente "fusionar", "inventar" o "mezcla", activa tu creatividad molecular.
 """
 
 
@@ -242,49 +248,20 @@ def parse_docs(results: dict) -> list[dict]:
 # ─────────────────────── Extracción de recetas vía LLM ───────────────
 # Usado tanto por los endpoints de ingesta web como por ingest.py.
 
-EXTRACTION_SYSTEM = """Eres un extractor de datos culinarios de precisión quirúrgica.
-Tu ÚNICA tarea: analizar texto de receta en cualquier formato o idioma y devolver un JSON válido.
+EXTRACTION_SYSTEM = """Eres un extractor de datos ultrarrápido.
+Devuelve SOLO JSON puro. Sin markdown, sin bloques ```json.
 
-REGLAS ABSOLUTAS:
-- Devuelve ÚNICAMENTE el JSON. Cero texto adicional, cero markdown, cero explicaciones.
-- Si un campo no existe en el texto, usa null o [] según corresponda.
-- Las cantidades deben ser strings numéricos o fraccionarios ("200", "1/2", "al gusto").
-- El JSON debe ser válido y parseable con json.loads(). Solo comillas dobles.
-
-ESQUEMA OBLIGATORIO:
+ESQUEMA:
 {
   "titulo": "string",
-  "descripcion": "string, máximo 2 oraciones",
-  "porciones": 4,
-  "ingredientes": [
-    {
-      "nombre": "string",
-      "cantidad": "string",
-      "unidad": "string (g|ml|taza|cucharada|cucharadita|unidad|diente|manojo|al gusto)",
-      "preparacion": "string opcional"
-    }
-  ],
-  "pasos": ["paso 1", "paso 2"],
-  "tiempos": {
-    "preparacion_minutos": 15,
-    "coccion_minutos": 30,
-    "reposo_minutos": 0,
-    "total_minutos": 45
-  },
-  "etiquetas": ["tag1", "tag2"],
-  "dificultad": "Fácil",
+  "descripcion": "string",
   "tipo_cocina": "string",
-  "tecnica_coccion": "string",
-  "notas_quimicas": "string con reacciones relevantes: Maillard, gelificación, emulsificación, etc.",
-  "valor_nutricional": {
-    "calorias_por_porcion": 350,
-    "proteinas_g": 25,
-    "carbohidratos_g": 40,
-    "grasas_g": 12
-  }
+  "dificultad": "Fácil/Media/Difícil",
+  "porciones": 0,
+  "tiempos": {"total_minutos": 0},
+  "ingredientes": [{"nombre": "string", "cantidad": "string", "unidad": "string"}],
+  "pasos": ["paso 1", "paso 2"]
 }
-
-dificultad debe ser exactamente uno de: "Fácil", "Media", "Difícil"
 """
 
 
@@ -448,18 +425,30 @@ async def chat(req: ChatRequest):
 @app.post("/api/recipes/extract")
 async def recipe_extract(req: ExtractRequest):
     """
-    Paso 1 de la ingesta web: interpreta texto libre con qwen2.5:7b y devuelve
-    el JSON estructurado. NO escribe en ChromaDB — solo extrae para previsualizar.
+    Paso 1 de la ingesta web: toma texto bruto y streamea la estructura JSON.
     """
-    if not req.text.strip():
-        raise HTTPException(400, "El texto está vacío.")
-    try:
-        recipe = await extract_recipe_llm(req.text)
-    except json.JSONDecodeError as e:
-        raise HTTPException(422, f"La IA devolvió JSON inválido: {e}")
-    except httpx.HTTPError as e:
-        raise HTTPException(503, f"Error al conectar con Ollama: {e}")
-    return {"recipe": recipe}
+    from fastapi.responses import StreamingResponse
+    
+    messages = [
+        {"role": "system", "content": EXTRACTION_SYSTEM},
+        {"role": "user", "content": f"Extrae esta receta:\n\n{req.text}"}
+    ]
+
+    async def event_generator():
+        print(f"DEBUG: Iniciando extracción para: {req.text[:50]}...")
+        try:
+            async for chunk in llm_stream(messages, temperature=0.1):
+                if chunk:
+                    yield chunk
+        except Exception as e:
+            print(f"DEBUG ERROR: {e}")
+            yield f"ERROR: {e}"
+
+    return StreamingResponse(
+        event_generator(), 
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
+    )
 
 
 @app.post("/api/recipes/save")
