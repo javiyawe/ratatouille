@@ -41,10 +41,12 @@ app.add_middleware(
 
 # ChromaDB persistente
 _chroma = chromadb.PersistentClient(path="./chroma_db")
-collection = _chroma.get_or_create_collection(
-    name="recipes",
-    metadata={"hnsw:space": "cosine"},
-)
+
+def get_col():
+    return _chroma.get_or_create_collection(
+        name="recipes",
+        metadata={"hnsw:space": "cosine"},
+    )
 
 # ─────────────────────────── Helpers Ollama ───────────────────────────
 
@@ -145,7 +147,7 @@ def is_alchemy(message: str) -> bool:
 
 def safe_query(query_embedding: list, n: int, where: Optional[dict] = None) -> dict:
     """Consulta ChromaDB manejando colección vacía."""
-    total = collection.count()
+    total = get_col().count()
     if total == 0:
         return {"ids": [[]], "documents": [[]], "metadatas": [[]], "distances": [[]]}
     n = min(n, total)
@@ -156,7 +158,7 @@ def safe_query(query_embedding: list, n: int, where: Optional[dict] = None) -> d
     }
     if where:
         kwargs["where"] = where
-    return collection.query(**kwargs)
+    return get_col().query(**kwargs)
 
 
 def build_where(max_time: Optional[int], difficulty: Optional[str]) -> Optional[dict]:
@@ -178,8 +180,7 @@ def normalize_recipe(r: dict) -> dict:
     if not r.get("titulo"):
         r["titulo"] = r.get("nombre") or r.get("receta") or r.get("title") or r.get("plato")
     
-    if not r.get("titulo"):
-        # Si sigue siendo None, intentar sacar algo de la descripción o usar el ID
+    if not r.get("titulo") or str(r.get("titulo")).lower() == "null":
         desc = r.get("descripcion") or ""
         r["titulo"] = desc[:30] + "..." if desc else "Receta sin nombre"
 
@@ -196,11 +197,17 @@ def normalize_recipe(r: dict) -> dict:
             elif isinstance(ing, dict):
                 nombre = ing.get("nombre") or ing.get("item") or ing.get("ingrediente") or "Ingrediente"
                 
+                # Limpieza de nulos y strings raros
+                cant = str(ing.get("cantidad") or "").strip()
+                if cant.lower() == "null": cant = ""
+                
+                unit = str(ing.get("unidad") or "").strip()
+                if unit.lower() == "null": unit = ""
+                
                 # Evitar unidades duplicadas (ej: "500g" y "g")
-                cant = str(ing.get("cantidad") or "").lower()
-                unit = str(ing.get("unidad") or "").lower()
-                if unit and unit in cant:
-                    unit = ""
+                # Si la unidad ya está al final de la cantidad, la quitamos de la cantidad para normalizar
+                if unit and cant.lower().endswith(unit.lower()):
+                    cant = cant[: -len(unit)].strip()
                 
                 normalized_ings.append({"nombre": nombre, "cantidad": cant, "unidad": unit})
         r["ingredientes"] = normalized_ings
@@ -333,7 +340,7 @@ async def store_recipe_async(recipe: dict) -> str:
     }
     doc_id = str(uuid.uuid4())
     vector = await embed(build_embed_text(recipe))
-    collection.add(
+    get_col().add(
         ids=[doc_id],
         embeddings=[vector],
         documents=[json.dumps(recipe, ensure_ascii=False)],
@@ -353,14 +360,14 @@ class SaveRecipeRequest(BaseModel):
 
 @app.get("/api/stats")
 async def stats():
-    return {"total_recipes": collection.count()}
+    return {"total_recipes": get_col().count()}
 
 
 @app.get("/api/recipes")
 async def get_recipes(limit: int = 50):
-    if collection.count() == 0:
+    if get_col().count() == 0:
         return {"recipes": []}
-    raw = collection.get(
+    raw = get_col().get(
         limit=limit,
         include=["documents", "metadatas"],
     )
@@ -382,7 +389,7 @@ async def search(req: SearchRequest):
     Nivel 1: búsqueda semántica NLP.
     Vectoriza la query con bge-m3, busca en ChromaDB con filtros opcionales.
     """
-    if collection.count() == 0:
+    if get_col().count() == 0:
         return {"recipes": [], "query": req.query}
 
     vec = await embed(req.query)
@@ -476,7 +483,7 @@ async def recipe_save(req: SaveRecipeRequest):
 async def recipe_delete(recipe_id: str):
     """Elimina una receta de ChromaDB por su ID."""
     try:
-        collection.delete(ids=[recipe_id])
+        get_col().delete(ids=[recipe_id])
     except Exception as e:
         raise HTTPException(404, f"No se pudo eliminar: {e}")
     return {"deleted": recipe_id}

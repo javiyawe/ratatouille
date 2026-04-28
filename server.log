@@ -1,0 +1,35 @@
+INFO:     Started server process [21424]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     127.0.0.1:64372 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64375 - "GET /static/app.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64372 - "GET /static/style.css HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64372 - "GET /api/recipes?limit=500 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64372 - "GET /favicon.ico HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64372 - "POST /api/chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64656 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64656 - "GET /static/app.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64658 - "GET /static/style.css HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64658 - "GET /api/recipes?limit=500 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64658 - "GET /favicon.ico HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64686 - "POST /api/search HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64699 - "GET /api/recipes?limit=500 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64699 - "POST /api/search HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64713 - "POST /api/search HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64713 - "GET /api/recipes?limit=500 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64734 - "POST /api/search HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64734 - "GET /api/recipes?limit=500 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64761 - "POST /api/chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64781 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64781 - "GET /static/style.css HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64783 - "GET /static/app.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64783 - "GET /api/recipes?limit=500 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64783 - "GET /favicon.ico HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64796 - "POST /api/chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64811 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64811 - "GET /static/style.css HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:64813 - "GET /static/app.js HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:64813 - "GET /favicon.ico HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64813 - "GET /api/recipes?limit=500 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64824 - "POST /api/chat HTTP/1.1" 200 OK

@@ -167,17 +167,15 @@ body {
 
 .letter-divider {
     font-family: var(--serif);
-    font-size: 2.2rem;
+    font-size: 1.8rem;
     font-weight: 900;
     color: var(--accent);
-    opacity: 0.15;
-    padding: 1.5rem 0.5rem 0.5rem;
-    border-bottom: 1px solid #eee;
+    opacity: 0.1;
+    padding: 2rem 0.5rem 0.5rem;
     margin-bottom: 0.5rem;
-    position: sticky;
-    top: -1rem;
-    background: white;
-    z-index: 5;
+    position: relative;
+    pointer-events: none;
+    border-bottom: 1px solid rgba(0,0,0,0.05);
 }
 
 .recipe-item {
@@ -217,11 +215,11 @@ body {
     flex: 1;
     background: var(--paper);
     overflow-y: auto;
-    padding: 4rem;
+    padding: 3rem 4rem;
 }
 
 .detail-paper {
-    max-width: 850px;
+    max-width: 800px;
     margin: 0 auto;
     animation: fadeIn 0.4s ease;
 }
@@ -244,14 +242,17 @@ body {
 .detail-header {
     display: flex;
     justify-content: space-between;
-    align-items: center;
-    margin-bottom: 3rem;
+    align-items: baseline;
+    margin-bottom: 2rem;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 1rem;
 }
 
 .detail-header h1 {
     font-family: var(--serif);
-    font-size: 3.5rem;
-    line-height: 1;
+    font-size: 2.8rem;
+    line-height: 1.1;
+    color: var(--ink);
 }
 
 .fav-star {
@@ -265,31 +266,34 @@ body {
 .fav-star.active { color: #f1c40f; }
 
 .detail-grid {
-    display: flex;
-    gap: 1.5rem;
-    margin-bottom: 4rem;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+    margin-bottom: 3rem;
 }
 
 .info-card {
-    flex: 1;
     background: white;
-    padding: 1.2rem;
-    border-radius: 12px;
+    padding: 1rem;
+    border-radius: 10px;
     border: 1px solid var(--border);
     text-align: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.02);
 }
 
 .info-card label { display: block; font-size: 0.65rem; text-transform: uppercase; letter-spacing: 1.5px; color: #999; margin-bottom: 0.5rem; }
 .info-card strong { font-size: 1.1rem; color: var(--accent); }
 
-.detail-section { margin-bottom: 4rem; }
+.detail-section { margin-bottom: 3rem; }
 .detail-section h3 {
     font-family: var(--serif);
-    font-size: 1.8rem;
+    font-size: 1.4rem;
     color: var(--accent);
-    margin-bottom: 1.5rem;
-    border-bottom: 2px solid rgba(0,0,0,0.03);
-    padding-bottom: 0.5rem;
+    margin-bottom: 1.2rem;
+    border-bottom: 1px solid rgba(0,0,0,0.05);
+    padding-bottom: 0.4rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
 }
 
 .ing-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem 3rem; }
@@ -330,7 +334,9 @@ body {
     font-size: 1.1rem;
 }
 
-.msg.ai { align-self: flex-start; background: #f9f9f9; border: 1px solid #eee; border-bottom-left-radius: 4px; }
+.msg.ai { align-self: flex-start; background: #f9f9f9; border: 1px solid #eee; border-bottom-left-radius: 4px; position: relative; }
+.msg.ai.typing::after { content: '...'; position: absolute; bottom: 0.5rem; right: 1rem; font-size: 0.8rem; color: #aaa; animation: blink 1s infinite; }
+@keyframes blink { 0% { opacity: 0; } 50% { opacity: 1; } 100% { opacity: 0; } }
 .msg.user { align-self: flex-end; background: #eef2ff; border-bottom-right-radius: 4px; }
 
 .chat-controls { padding: 3rem 4rem; }

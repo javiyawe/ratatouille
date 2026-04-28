@@ -156,7 +156,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         addMsg('user', text);
         chatInput.value = '';
+        
+        // Ratatouille está pensando...
         const aiDiv = addMsg('ai', '...');
+        aiDiv.classList.add('typing');
         let full = '';
 
         try {
@@ -166,6 +169,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 body: JSON.stringify({ message: text, history: chatHistory })
             });
 
+            if (!res.ok) throw new Error('Error en la comunicación');
+
             const reader = res.body.getReader();
             const decoder = new TextDecoder();
             let first = true;
@@ -173,24 +178,41 @@ document.addEventListener('DOMContentLoaded', () => {
             while (true) {
                 const { done, value } = await reader.read();
                 if (done) break;
-                const chunk = decoder.decode(value);
+                
+                const chunk = decoder.decode(value, { stream: true });
                 const lines = chunk.split('\n');
                 
                 for (let line of lines) {
                     if (line.startsWith('SOURCES: ')) {
-                        const s = JSON.parse(line.replace('SOURCES: ',''));
-                        sourceNodes.innerHTML = s.map(n => `<div class="node-chip">${n}</div>`).join('');
+                        try {
+                            const s = JSON.parse(line.replace('SOURCES: ',''));
+                            sourceNodes.innerHTML = s.map(n => `<div class="node-chip">${n}</div>`).join('');
+                        } catch(e) {}
                     } else if (line.trim() === '[DONE]') {
                     } else if (line) {
-                        if (first) { aiDiv.textContent = ''; first = false; }
+                        if (line.startsWith('{')) {
+                            try {
+                                const j = JSON.parse(line);
+                                line = j.response || line;
+                            } catch(e) {}
+                        }
+
+                        if (first) { 
+                            aiDiv.textContent = ''; 
+                            aiDiv.classList.remove('typing');
+                            first = false; 
+                        }
                         full += line;
-                        aiDiv.textContent = full;
+                        aiDiv.innerHTML = marked.parse(full); // USAR MARKED
                         chatMessages.scrollTop = chatMessages.scrollHeight;
                     }
                 }
             }
             chatHistory.push({role:'user', content:text}, {role:'assistant', content:full});
-        } catch (e) { aiDiv.textContent = 'Ratatouille se ha distraído... intenta de nuevo.'; }
+        } catch (e) { 
+            aiDiv.textContent = 'Ratatouille se ha distraído... parece que algo huele raro en la cocina. Intenta de nuevo.'; 
+            aiDiv.classList.remove('typing');
+        }
     }
 
     function addMsg(role, content) {
@@ -240,9 +262,18 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     saveRecipeBtn.onclick = async () => {
-        await fetch('/api/recipes/save', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({recipe:extractedRecipe})});
-        addModal.style.display = 'none';
-        loadRecipes();
+        saveRecipeBtn.disabled = true;
+        saveRecipeBtn.textContent = 'Guardando...';
+        try {
+            await fetch('/api/recipes/save', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({recipe:extractedRecipe})});
+            addModal.style.display = 'none';
+            loadRecipes();
+            // Limpiar modal
+            rawRecipeText.value = '';
+            extractionPreview.innerHTML = '';
+            saveRecipeBtn.style.display = 'none';
+        } catch(e) { alert('Error al guardar.'); }
+        finally { saveRecipeBtn.disabled = false; saveRecipeBtn.textContent = 'Guardar en el Libro'; }
     };
 
     window.toggleFav = (id, el) => {
