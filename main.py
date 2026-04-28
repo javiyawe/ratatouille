@@ -29,7 +29,7 @@ from pydantic import BaseModel
 
 OLLAMA_URL = "http://localhost:11434"
 EMBED_MODEL = "bge-m3:latest"
-LLM_MODEL   = "qwen2.5:7b"
+LLM_MODEL   = "qwen2.5:1.5b"
 
 app = FastAPI(title="Ratatui API", version="1.0.0")
 
@@ -136,7 +136,7 @@ Eres un genio culinario con un olfato prodigioso y una pasión inmensa por la co
 ═══ FORMATO DE RESPUESTA OBLIGATORIO ═══
 Tus respuestas deben seguir SIEMPRE esta estructura para que sean legibles y bellas:
 
-1. INTRO: Un saludo breve y cálido explicando qué has adaptado o por qué sugieres esta receta.
+1. INTRO: Un saludo breve y cálido explicando qué receta propones, o que receta o recetas has adaptado o por qué sugieres esta receta.
 2. ### 🛒 Ingredientes (Para [X] personas)
    - Lista con bullet points.
    - Cantidad y nombre del ingrediente claros.
@@ -276,7 +276,7 @@ ESQUEMA:
 
 
 async def extract_recipe_llm(raw_text: str) -> dict:
-    """Extrae estructura JSON de texto libre usando qwen2.5:7b."""
+    """Extrae estructura JSON de texto libre usando qwen2.5:1.5b."""
     content = await llm(
         [
             {"role": "system", "content": EXTRACTION_SYSTEM},
@@ -342,6 +342,13 @@ class ExtractRequest(BaseModel):
 
 class SaveRecipeRequest(BaseModel):
     recipe: dict  # JSON ya estructurado devuelto por /api/recipes/extract
+
+class UpdateRecipeRequest(BaseModel):
+    recipe: dict
+
+class RefineRecipeRequest(BaseModel):
+    recipe: dict
+    instructions: str
 
 # ─────────────────────────── Endpoints ───────────────────────────────
 
@@ -567,6 +574,86 @@ async def recipe_delete(recipe_id: str):
     except Exception as e:
         raise HTTPException(404, f"No se pudo eliminar: {e}")
     return {"deleted": recipe_id}
+
+
+@app.put("/api/recipes/{recipe_id}")
+async def recipe_update(recipe_id: str, req: UpdateRecipeRequest):
+    """Actualiza una receta existente."""
+    recipe = req.recipe
+    tiempos = recipe.get("tiempos") or {}
+    metadata = {
+        "titulo":             str(recipe.get("titulo") or "Sin título"),
+        "dificultad":         str(recipe.get("dificultad") or "Media"),
+        "tipo_cocina":        str(recipe.get("tipo_cocina") or ""),
+        "tecnica_coccion":    str(recipe.get("tecnica_coccion") or ""),
+        "etiquetas":          json.dumps(recipe.get("etiquetas") or [], ensure_ascii=False),
+        "total_time_minutes": int(tiempos.get("total_minutos") or 0),
+        "porciones":          int(recipe.get("porciones") or 0),
+        "archivo_origen":     str(recipe.get("archivo_origen") or "web_edit"),
+    }
+    
+    # Re-generar vector por si cambió el contenido
+    vector = await embed(build_embed_text(recipe))
+    
+    try:
+        get_col().update(
+            ids=[recipe_id],
+            embeddings=[vector],
+            documents=[json.dumps(recipe, ensure_ascii=False)],
+            metadatas=[metadata],
+        )
+    except Exception as e:
+        raise HTTPException(500, f"Error al actualizar: {e}")
+    
+    return {"status": "updated", "id": recipe_id}
+
+
+@app.post("/api/recipes/refine")
+async def recipe_refine(req: RefineRecipeRequest):
+    """
+    Usa la IA para reinterpretar o modificar una receta según instrucciones naturales.
+    """
+    refine_prompt = f"""Eres Ratatui, el genio culinario.
+Tu tarea es modificar la receta proporcionada siguiendo estas instrucciones: "{req.instructions}"
+
+REGLAS:
+1. Mantén la esencia de la receta pero aplica los cambios solicitados de forma creativa y profesional.
+2. Devuelve ÚNICAMENTE el JSON estructurado siguiendo el esquema estándar.
+3. Si te piden cambiar porciones, ajusta las cantidades de los ingredientes proporcionalmente.
+4. Mejora la redacción de los pasos si es necesario para que suene más 'chef'.
+
+ESQUEMA:
+{{
+  "titulo": "string",
+  "descripcion": "string",
+  "tipo_cocina": "string",
+  "dificultad": "Fácil/Media/Difícil",
+  "porciones": number,
+  "tiempos": {{"total_minutos": number}},
+  "ingredientes": [{{ "nombre": "string", "cantidad": "string", "unidad": "string" }}],
+  "pasos": ["paso 1", "paso 2"]
+}}
+
+RECETA ORIGINAL:
+{json.dumps(req.recipe, ensure_ascii=False)}
+"""
+    try:
+        content = await llm(
+            [
+                {"role": "system", "content": EXTRACTION_SYSTEM},
+                {"role": "user", "content": refine_prompt},
+            ],
+            temperature=0.3,
+        )
+        content = re.sub(r"```(?:json)?\s*", "", content).strip()
+        content = re.sub(r"```\s*$", "", content, flags=re.MULTILINE).strip()
+        match = re.search(r"\{[\s\S]+\}", content)
+        if match:
+            content = match.group(0)
+        refined = json.loads(content)
+        return {"recipe": refined}
+    except Exception as e:
+        raise HTTPException(500, f"Error al reinterpretar con la IA: {e}")
 
 # ─────────────────────────── Estáticos ───────────────────────────────
 

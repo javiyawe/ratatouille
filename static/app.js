@@ -107,6 +107,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await res.json();
             recipes = data.recipes || [];
             sortAndRender();
+            updateStats();
             // No recipe selected by default as requested
         } catch (e) {
             recipeList.innerHTML = '<div style="padding:2rem; color:#e74c3c;">Error al conectar con la cocina.</div>';
@@ -176,7 +177,10 @@ document.addEventListener('DOMContentLoaded', () => {
             <div class="detail-paper">
                 <header class="detail-header">
                     <h1>${r.titulo}</h1>
-                    <button class="fav-star ${isFav(id)?'active':''}" onclick="toggleFav('${id}', this)">★</button>
+                    <div class="header-actions">
+                        <button class="edit-btn" onclick="openEditModal('${id}')">✏️ Editar</button>
+                        <button class="fav-star ${isFav(id)?'active':''}" onclick="toggleFav('${id}', this)">★</button>
+                    </div>
                 </header>
                 
                 <div class="detail-grid">
@@ -208,7 +212,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
             </div>
         `;
-        recipeDetail.scrollTop = 0;
+        // Scroll reset robusto
+        recipeDetail.scrollTo(0, 0);
+        setTimeout(() => recipeDetail.scrollTop = 0, 0);
     };
 
     // --- Chat Logic ---
@@ -507,4 +513,116 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function isFav(id) { return JSON.parse(localStorage.getItem('favs')||'[]').includes(id); }
     function debounce(fn, t) { let id; return (...a) => { clearTimeout(id); id = setTimeout(()=>fn(...a), t); }; }
+
+    async function updateStats() {
+        try {
+            const res = await fetch('/api/stats');
+            const data = await res.json();
+            document.getElementById('recipeCount').textContent = `${data.total_recipes} recetas`;
+        } catch(e) {}
+    }
+
+    window.openEditModal = (id) => {
+        const r = recipes.find(x => x._id === id);
+        if (!r) return;
+        
+        document.getElementById('editTitle').value = r.titulo;
+        document.getElementById('editDesc').value = r.descripcion || '';
+        document.getElementById('editDiff').value = r.dificultad || 'Media';
+        document.getElementById('editTime').value = r.tiempos?.total_minutos || 0;
+        document.getElementById('editPortions').value = r.porciones || 0;
+        document.getElementById('editIngs').value = JSON.stringify(r.ingredientes, null, 2);
+        document.getElementById('editSteps').value = (r.pasos || []).join('\n');
+        
+        document.getElementById('editModal').style.display = 'flex';
+        document.getElementById('magicInstructions').value = '';
+        
+        document.getElementById('saveEditBtn').onclick = () => saveEdit(id);
+        document.getElementById('magicBtn').onclick = () => applyMagic(id);
+    };
+
+    async function applyMagic(id) {
+        const instr = document.getElementById('magicInstructions').value.trim();
+        if (!instr) return;
+
+        const magicBtn = document.getElementById('magicBtn');
+        magicBtn.disabled = true;
+        magicBtn.innerHTML = '<span class="loading-spin">⌛</span> Procesando...';
+
+        const currentRecipe = {
+            titulo: document.getElementById('editTitle').value,
+            descripcion: document.getElementById('editDesc').value,
+            dificultad: document.getElementById('editDiff').value,
+            tiempos: { total_minutos: parseInt(document.getElementById('editTime').value) || 0 },
+            porciones: parseInt(document.getElementById('editPortions').value) || 0,
+            ingredientes: JSON.parse(document.getElementById('editIngs').value),
+            pasos: document.getElementById('editSteps').value.split('\n').filter(s => s.trim())
+        };
+
+        try {
+            const res = await fetch('/api/recipes/refine', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ recipe: currentRecipe, instructions: instr })
+            });
+            const data = await res.json();
+            if (data.recipe) {
+                const r = data.recipe;
+                document.getElementById('editTitle').value = r.titulo;
+                document.getElementById('editDesc').value = r.descripcion;
+                document.getElementById('editDiff').value = r.dificultad;
+                document.getElementById('editTime').value = r.tiempos?.total_minutos || 0;
+                document.getElementById('editPortions').value = r.porciones || 0;
+                document.getElementById('editIngs').value = JSON.stringify(r.ingredientes, null, 2);
+                document.getElementById('editSteps').value = (r.pasos || []).join('\n');
+                document.getElementById('magicInstructions').value = '';
+            }
+        } catch(e) {
+            alert('Ratatui se ha liado con la magia. Intenta de nuevo.');
+        } finally {
+            magicBtn.disabled = false;
+            magicBtn.textContent = 'Aplicar Magia';
+        }
+    }
+
+    async function saveEdit(id) {
+        const saveBtn = document.getElementById('saveEditBtn');
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Guardando...';
+        
+        const updatedRecipe = {
+            titulo: document.getElementById('editTitle').value,
+            descripcion: document.getElementById('editDesc').value,
+            dificultad: document.getElementById('editDiff').value,
+            tiempos: { total_minutos: parseInt(document.getElementById('editTime').value) || 0 },
+            porciones: parseInt(document.getElementById('editPortions').value) || 0,
+            ingredientes: JSON.parse(document.getElementById('editIngs').value),
+            pasos: document.getElementById('editSteps').value.split('\n').filter(s => s.trim())
+        };
+
+        try {
+            const res = await fetch(`/api/recipes/${id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ recipe: updatedRecipe })
+            });
+            if (res.ok) {
+                document.getElementById('editModal').style.display = 'none';
+                await loadRecipes();
+                await viewRecipe(id, false); // Refrescar vista
+            } else {
+                alert('Error al guardar cambios');
+            }
+        } catch(e) {
+            console.error(e);
+            alert('Error en la conexión');
+        } finally {
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Guardar Cambios';
+        }
+    }
+
+    document.getElementById('cancelEdit').onclick = () => {
+        document.getElementById('editModal').style.display = 'none';
+    };
 });
