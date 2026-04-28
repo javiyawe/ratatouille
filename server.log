@@ -33,3 +33,11 @@ INFO:     127.0.0.1:64813 - "GET /static/app.js HTTP/1.1" 304 Not Modified
 INFO:     127.0.0.1:64813 - "GET /favicon.ico HTTP/1.1" 200 OK
 INFO:     127.0.0.1:64813 - "GET /api/recipes?limit=500 HTTP/1.1" 200 OK
 INFO:     127.0.0.1:64824 - "POST /api/chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64894 - "POST /api/recipes/extract HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65003 - "POST /api/recipes/save HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65003 - "GET /api/recipes?limit=500 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65084 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65084 - "GET /static/style.css HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65086 - "GET /static/app.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65086 - "GET /api/recipes?limit=500 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65086 - "GET /favicon.ico HTTP/1.1" 200 OK
