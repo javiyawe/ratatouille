@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Ratatouille</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,600;1,400&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="/static/style.css"/>
+</head>
+<body>
+
+<!-- ══ HEADER ══════════════════════════════════════════════════════ -->
+<header class="header">
+  <div class="header-inner">
+    <div class="logo">
+      <span class="logo-icon">🍲</span>
+      <div>
+        <h1>Ratatouille</h1>
+        <p>Libro de Recetas · Local</p>
+      </div>
+    </div>
+    <nav class="header-tabs">
+      <button class="htab active" data-tab="recetario">📖 Recetario</button>
+      <button class="htab" data-tab="chef">⚗️ Chef IA</button>
+    </nav>
+    <div class="header-right">
+      <span class="stats-badge">
+        <span class="stats-dot" id="stats-dot"></span>
+        <span id="stats-text">—</span>
+      </span>
+    </div>
+  </div>
+</header>
+
+<!-- ══ TAB: RECETARIO ══════════════════════════════════════════════ -->
+<main id="tab-recetario" class="tab-pane active">
+
+  <!-- Toolbar fuera del libro -->
+  <div class="toolbar">
+    <div class="search-wrap">
+      <span class="search-icon">🔍</span>
+      <input id="search-input" type="text" placeholder="Busca ingrediente, plato, técnica…" autocomplete="off" spellcheck="false"/>
+      <button id="search-btn" class="btn-accent">Buscar</button>
+    </div>
+    <div class="toolbar-actions">
+      <select id="filter-time" class="sel">
+        <option value="">⏱ Tiempo</option>
+        <option value="20">≤ 20 min</option>
+        <option value="45">≤ 45 min</option>
+        <option value="90">≤ 1.5 h</option>
+      </select>
+      <select id="filter-difficulty" class="sel">
+        <option value="">📊 Dificultad</option>
+        <option value="Fácil">Fácil</option>
+        <option value="Media">Media</option>
+        <option value="Difícil">Difícil</option>
+      </select>
+      <button id="fav-filter-btn" class="btn-outline" title="Solo favoritas">☆ Favoritas</button>
+      <button id="load-all-btn" class="btn-outline">Ver todas</button>
+      <button id="clear-btn" class="btn-outline hidden">✕ Limpiar</button>
+      <button id="add-btn" class="btn-add">＋ Añadir</button>
+    </div>
+  </div>
+
+  <!-- El Libro -->
+  <div class="book-wrap">
+    <div class="book" id="book">
+
+      <!-- Página izquierda: índice -->
+      <div class="book-page book-left">
+        <div class="page-head">
+          <span class="page-chapter">Índice</span>
+          <span class="page-count" id="page-count"></span>
+        </div>
+        <div class="recipe-index" id="recipe-index">
+          <div class="index-loading">
+            <div class="spinner"></div>
+          </div>
+        </div>
+        <div class="page-foot"><span class="page-num">1</span></div>
+      </div>
+
+      <!-- Lomo del libro -->
+      <div class="book-spine">
+        <div class="spine-lines"></div>
+      </div>
+
+      <!-- Página derecha: detalle -->
+      <div class="book-page book-right" id="book-right">
+        <div class="detail-empty" id="detail-empty">
+          <div class="empty-lines">
+            <span></span><span></span><span></span><span></span>
+            <span></span><span></span><span></span><span></span>
+          </div>
+          <div class="empty-cta">
+            <span class="empty-arrow">←</span>
+            <p>Selecciona una receta del índice</p>
+          </div>
+        </div>
+        <div class="recipe-detail hidden" id="recipe-detail"></div>
+        <div class="page-foot right"><span class="page-num" id="right-page-num">2</span></div>
+      </div>
+
+    </div>
+  </div>
+
+</main>
+
+<!-- ══ TAB: CHEF IA ══════════════════════════════════════════════ -->
+<main id="tab-chef" class="tab-pane">
+  <div class="chat-layout">
+    <div class="chat-head">
+      <div class="chef-av">👨‍🍳</div>
+      <div>
+        <h2>Chef IA</h2>
+        <p>RAG · <code>qwen2.5:7b</code> + <code>bge-m3</code></p>
+      </div>
+      <div class="mode-pill" id="mode-pill">
+        <span class="mode-dot" id="mode-dot"></span>
+        <span id="mode-label">Normal</span>
+      </div>
+    </div>
+
+    <div class="chat-msgs" id="chat-msgs">
+      <div class="msg msg-ai">
+        <div class="msg-av">👨‍🍳</div>
+        <div class="msg-bubble">
+          <p>¡Hola! Soy tu <strong>Chef IA</strong>. Tengo acceso a tu recetario y puedo:</p>
+          <ul>
+            <li>🔍 Buscar y explicar cualquier receta</li>
+            <li>📐 Adaptar porciones con cálculo exacto</li>
+            <li>⚗️ <strong>Modo Alquimia</strong>: di "fusionar" o "inventar" para crear platos inéditos</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="chat-foot">
+      <div class="sources-bar hidden" id="sources-bar">
+        <span class="src-label">📚 Fuentes:</span>
+        <div id="sources-list"></div>
+      </div>
+      <div class="hints-row">
+        <button class="hint" onclick="useHint(this)">¿Qué recetas tengo?</button>
+        <button class="hint" onclick="useHint(this)">Algo rápido para hoy</button>
+        <button class="hint" onclick="useHint(this)">Fusiona dos recetas y crea algo nuevo</button>
+        <button class="hint" onclick="useHint(this)">Adapta la paella a 10 personas</button>
+      </div>
+      <div class="chat-input-row">
+        <textarea id="chat-input" rows="1" placeholder="Pregunta, pide adaptaciones o di 'fusionar'…"></textarea>
+        <button id="send-btn" class="send-btn">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- ══ MODAL: AÑADIR RECETA ══════════════════════════════════════ -->
+<div id="add-overlay" class="overlay" aria-hidden="true">
+  <div class="overlay-card">
+    <button class="overlay-close" id="add-close">✕</button>
+
+    <div id="add-s-input">
+      <div class="add-header">
+        <span>📝</span>
+        <div>
+          <h2>Añadir receta</h2>
+          <p>Escribe o pega en cualquier formato. La IA lo estructurará.</p>
+        </div>
+      </div>
+      <textarea id="add-text" class="add-ta" rows="11" placeholder="Pega cualquier texto: un mensaje, una nota caótica, una página web, una receta dictada… la IA lo entiende."></textarea>
+      <div class="add-foot">
+        <span class="char-count" id="char-count">0 caracteres</span>
+        <button id="add-process-btn" class="btn-accent">⚗️ Procesar con IA</button>
+      </div>
+    </div>
+
+    <div id="add-s-loading" class="hidden">
+      <div class="add-loading">
+        <div class="spinner spinner-lg"></div>
+        <h3>Procesando con <code>qwen2.5:7b</code>…</h3>
+        <p>Extrayendo estructura, ingredientes y tiempos</p>
+        <div class="proc-steps">
+          <div class="proc-step" id="ps-0">📖 Leyendo el texto</div>
+          <div class="proc-step" id="ps-1">🧠 Extrayendo estructura</div>
+          <div class="proc-step" id="ps-2">✅ Validando JSON</div>
+        </div>
+      </div>
+    </div>
+
+    <div id="add-s-preview" class="hidden">
+      <div class="preview-ok">
+        <span>✅</span>
+        <div><strong>Receta extraída</strong><p>Revisa antes de guardar</p></div>
+      </div>
+      <div id="add-preview-body" class="preview-scroll"></div>
+      <div class="add-foot">
+        <button id="add-back-btn" class="btn-outline">← Editar</button>
+        <button id="add-save-btn" class="btn-accent">💾 Guardar</button>
+      </div>
+    </div>
+
+    <div id="add-s-saving" class="hidden">
+      <div class="add-loading">
+        <div class="spinner spinner-lg"></div>
+        <h3>Guardando…</h3>
+        <p>Vectorizando con <code>bge-m3</code> y guardando en ChromaDB</p>
+      </div>
+    </div>
+
+    <div id="add-s-success" class="hidden">
+      <div class="add-success">
+        <div class="success-emoji">🎉</div>
+        <h3>¡Guardada!</h3>
+        <p id="add-success-name"></p>
+        <div class="add-foot" style="justify-content:center;gap:10px;margin-top:16px">
+          <button id="add-another-btn" class="btn-outline">＋ Otra</button>
+          <button id="add-done-btn" class="btn-accent">Ver recetario</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
