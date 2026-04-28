@@ -36,6 +36,7 @@
                         <div class="filter-bar">
                             <select id="sortSelect">
                                 <option value="alpha">Orden Alfabético</option>
+                                <option value="favs">Favoritos ★</option>
                                 <option value="time">Tiempo</option>
                                 <option value="difficulty">Dificultad</option>
                             </select>
@@ -60,24 +61,34 @@
         <!-- VISTA: CHAT (Pantalla Completa) -->
         <section id="viewChat" class="view-panel">
             <div class="chat-layout">
-                <div class="chat-container">
-                    <div id="chatMessages" class="chat-feed">
-                        <div class="msg ai">
-                            ¡Magnifique! Soy Ratatui. He estado revisando tu despensa y estoy listo para crear algo extraordinario. ¿Qué te gustaría cocinar hoy?
-                        </div>
+                <aside class="chat-sidebar">
+                    <div class="sidebar-header">
+                        <button id="newChatBtn" class="btn-primary" style="width:100%">＋ Nueva Charla</button>
                     </div>
-                    <div class="chat-controls">
-                        <div class="input-glow-wrapper">
-                            <input type="text" id="chatInput" placeholder="Pregúntale a Ratatui...">
-                            <button id="sendChat">➤</button>
-                        </div>
+                    <div id="chatHistoryList" class="chat-history-list">
+                        <!-- JS renders chat history here -->
                     </div>
-                </div>
-                <aside class="chat-info">
-                    <h3>Inspiración de Contexto</h3>
-                    <p class="info-desc">Nodos del recetario consultados por la IA.</p>
-                    <div id="sourceNodes" class="nodes-grid"></div>
                 </aside>
+                <div class="chat-main">
+                    <div class="chat-container">
+                        <div id="chatMessages" class="chat-feed">
+                            <div class="msg ai">
+                                ¡Magnifique! Soy Ratatui. He estado revisando tu despensa y estoy listo para crear algo extraordinario. ¿Qué te gustaría cocinar hoy?
+                            </div>
+                        </div>
+                        <div class="chat-controls">
+                            <div class="input-glow-wrapper">
+                                <input type="text" id="chatInput" placeholder="Pregúntale a Ratatui...">
+                                <button id="sendChat">➤</button>
+                            </div>
+                        </div>
+                    </div>
+                    <aside class="chat-info">
+                        <h3>Inspiración de Contexto</h3>
+                        <p class="info-desc">Nodos del recetario consultados por la IA.</p>
+                        <div id="sourceNodes" class="nodes-grid"></div>
+                    </aside>
+                </div>
             </div>
         </section>
     </main>

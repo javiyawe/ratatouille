@@ -14,6 +14,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const chatInput = document.getElementById('chatInput');
     const sendChat = document.getElementById('sendChat');
     const sourceNodes = document.getElementById('sourceNodes');
+    const chatHistoryList = document.getElementById('chatHistoryList');
+    const newChatBtn = document.getElementById('newChatBtn');
     
     const addRecipeBtn = document.getElementById('addRecipeBtn');
     const addModal = document.getElementById('addModal');
@@ -24,28 +26,75 @@ document.addEventListener('DOMContentLoaded', () => {
     const extractionPreview = document.getElementById('extractionPreview');
 
     let recipes = [];
-    let chatHistory = [];
     let currentSelectedId = null;
     let extractedRecipe = null;
+    let currentChatId = localStorage.getItem('last_chat_id');
 
     // --- Boot ---
-    setTimeout(loadRecipes, 200);
+    setTimeout(async () => {
+        await loadRecipes();
+        await loadChatHistory();
+        handleRouting(); // Manejar ruta inicial
+    }, 200);
 
-    // --- View Navigation ---
     viewLibroBtn.onclick = () => switchView('libro');
     viewChatBtn.onclick = () => switchView('chat');
 
-    function switchView(view) {
+    // --- Navigation & Routing ---
+
+    function navigate(path, state = {}) {
+        history.pushState(state, '', path);
+        handleRouting();
+    }
+
+    async function handleRouting() {
+        const path = window.location.pathname;
+        
+        if (path.startsWith('/chat')) {
+            switchView('chat', false);
+            const chatId = path.split('/')[2];
+            if (chatId) {
+                currentChatId = chatId;
+                localStorage.setItem('last_chat_id', chatId);
+                await switchChat(chatId, true, false);
+            } else {
+                // Si estamos en /chat sin ID, intentar cargar el último o crear uno
+                if (currentChatId) {
+                    navigate(`/chat/${currentChatId}`);
+                }
+            }
+        } else {
+            // Default: /libro
+            switchView('libro', false);
+            const recipeId = path.split('/recipe/')[1];
+            if (recipeId) {
+                currentSelectedId = recipeId;
+                await viewRecipe(recipeId, false);
+            }
+        }
+    }
+
+    window.onpopstate = handleRouting;
+
+    function switchView(view, updateUrl = true) {
         if (view === 'libro') {
             viewLibro.classList.add('active');
             viewChat.classList.remove('active');
             viewLibroBtn.classList.add('active');
             viewChatBtn.classList.remove('active');
+            if (updateUrl) {
+                const url = currentSelectedId ? `/libro/recipe/${currentSelectedId}` : '/libro';
+                navigate(url);
+            }
         } else {
             viewLibro.classList.remove('active');
             viewChat.classList.add('active');
             viewLibroBtn.classList.remove('active');
             viewChatBtn.classList.add('active');
+            if (updateUrl) {
+                const url = currentChatId ? `/chat/${currentChatId}` : '/chat';
+                navigate(url);
+            }
         }
     }
 
@@ -58,7 +107,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await res.json();
             recipes = data.recipes || [];
             sortAndRender();
-            if (recipes.length && !currentSelectedId) viewRecipe(recipes[0]._id);
+            // No recipe selected by default as requested
         } catch (e) {
             recipeList.innerHTML = '<div style="padding:2rem; color:#e74c3c;">Error al conectar con la cocina.</div>';
         }
@@ -71,6 +120,13 @@ document.addEventListener('DOMContentLoaded', () => {
         else if (val === 'difficulty') {
             const m = {'Fácil':1, 'Media':2, 'Difícil':3};
             recipes.sort((a,b) => (m[a.dificultad]||2) - (m[b.dificultad]||2));
+        } else if (val === 'favs') {
+            const f = JSON.parse(localStorage.getItem('favs')||'[]');
+            recipes.sort((a,b) => {
+                const aFav = f.includes(a._id) ? 0 : 1;
+                const bFav = f.includes(b._id) ? 0 : 1;
+                return aFav - bFav;
+            });
         }
         renderList();
     }
@@ -95,7 +151,10 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             html += `
                 <div class="recipe-item ${currentSelectedId === r._id ? 'active' : ''}" onclick="viewRecipe('${r._id}')">
-                    <h3>${r.titulo}</h3>
+                    <div class="recipe-item-header">
+                        <h3>${r.titulo}</h3>
+                        ${isFav(r._id) ? '<span class="list-star">★</span>' : ''}
+                    </div>
                     <div class="meta">${r.tipo_cocina || 'Francesa'} • ${r.dificultad || 'Media'}</div>
                 </div>
             `;
@@ -103,7 +162,11 @@ document.addEventListener('DOMContentLoaded', () => {
         recipeList.innerHTML = html;
     }
 
-    window.viewRecipe = (id) => {
+    window.viewRecipe = async (id, updateUrl = true) => {
+        if (updateUrl) {
+            navigate(`/libro/recipe/${id}`);
+            return;
+        }
         const r = recipes.find(x => x._id === id);
         if (!r) return;
         currentSelectedId = id;
@@ -150,6 +213,95 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Chat Logic ---
 
+    async function loadChatHistory() {
+        try {
+            const res = await fetch('/api/chats');
+            const data = await res.json();
+            renderChatHistory(data.chats);
+            if (currentChatId) {
+                switchChat(currentChatId, false);
+            }
+        } catch(e) { console.error("Error loading chats", e); }
+    }
+
+    function renderChatHistory(chats) {
+        if (!chats.length) {
+            chatHistoryList.innerHTML = '<p style="padding:1rem; color:#999; font-size:0.8rem; text-align:center;">No hay charlas previas.</p>';
+            return;
+        }
+        chatHistoryList.innerHTML = chats.map(c => `
+            <div class="chat-history-item ${currentChatId === c.id ? 'active' : ''}" onclick="switchChat('${c.id}')">
+                <div class="chat-title">${c.title}</div>
+                <button class="delete-chat-btn" onclick="event.stopPropagation(); deleteChat('${c.id}')">×</button>
+            </div>
+        `).join('');
+    }
+
+    window.switchChat = async (id, shouldLoad = true, updateUrl = true) => {
+        if (updateUrl) {
+            navigate(`/chat/${id}`);
+            return;
+        }
+        currentChatId = id;
+        localStorage.setItem('last_chat_id', id);
+        
+        // UI feedback immediately
+        const items = document.querySelectorAll('.chat-history-item');
+        items.forEach(it => it.classList.toggle('active', it.getAttribute('onclick')?.includes(id)));
+
+        if (!shouldLoad) return;
+
+        chatMessages.innerHTML = '<div style="padding:2rem; color:#999; text-align:center;">Cargando conversación...</div>';
+        try {
+            const res = await fetch(`/api/chats/${id}`);
+            const data = await res.json();
+            chatMessages.innerHTML = '';
+            if (!data.history || !data.history.length) {
+                addMsg('ai', '¡Magnifique! Soy Ratatui. ¿Qué te gustaría cocinar hoy?');
+            } else {
+                data.history.forEach(m => {
+                    const aiDiv = addMsg(m.role === 'assistant' ? 'ai' : 'user', m.content);
+                    if (m.role === 'assistant') {
+                        aiDiv.innerHTML = marked.parse(m.content);
+                    }
+                });
+            }
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        } catch(e) { 
+            chatMessages.innerHTML = '<div style="color:#e74c3c; padding:2rem;">Error al cargar el chat.</div>';
+        }
+    };
+
+    window.createNewChat = async () => {
+        try {
+            const res = await fetch('/api/chats', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ title: 'Nueva conversación' })
+            });
+            const data = await res.json();
+            currentChatId = data.id;
+            localStorage.setItem('last_chat_id', currentChatId);
+            navigate(`/chat/${currentChatId}`);
+            loadChatHistory();
+            chatMessages.innerHTML = '';
+            addMsg('ai', '¡Magnifique! Soy Ratatui. He estado revisando tu despensa y estoy listo para crear algo extraordinario. ¿Qué te gustaría cocinar hoy?');
+        } catch(e) { console.error(e); }
+    };
+
+    window.deleteChat = async (id) => {
+        if (!confirm('¿Borrar esta conversación?')) return;
+        try {
+            await fetch(`/api/chats/${id}`, { method: 'DELETE' });
+            if (currentChatId === id) {
+                currentChatId = null;
+                localStorage.removeItem('last_chat_id');
+                chatMessages.innerHTML = '<div class="msg ai">Elige o crea una conversación para empezar.</div>';
+            }
+            loadChatHistory();
+        } catch(e) { console.error(e); }
+    };
+
     async function handleChat() {
         const text = chatInput.value.trim();
         if (!text) return;
@@ -157,7 +309,6 @@ document.addEventListener('DOMContentLoaded', () => {
         addMsg('user', text);
         chatInput.value = '';
         
-        // Ratatui está pensando...
         const aiDiv = addMsg('ai', '...');
         aiDiv.classList.add('typing');
         let full = '';
@@ -166,7 +317,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const res = await fetch('/api/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message: text, history: chatHistory })
+                body: JSON.stringify({ 
+                    message: text, 
+                    chat_id: currentChatId 
+                })
             });
 
             if (!res.ok) throw new Error('Error en la comunicación');
@@ -188,6 +342,13 @@ document.addEventListener('DOMContentLoaded', () => {
                             const s = JSON.parse(line.replace('SOURCES: ',''));
                             sourceNodes.innerHTML = s.map(n => `<div class="node-chip">${n}</div>`).join('');
                         } catch(e) {}
+                    } else if (line.startsWith('CHAT_ID: ')) {
+                        const newId = line.replace('CHAT_ID: ', '').trim();
+                        if (!currentChatId || currentChatId !== newId) {
+                            currentChatId = newId;
+                            localStorage.setItem('last_chat_id', newId);
+                            loadChatHistory();
+                        }
                     } else if (line.trim() === '[DONE]') {
                     } else if (line) {
                         if (line.startsWith('{')) {
@@ -203,12 +364,18 @@ document.addEventListener('DOMContentLoaded', () => {
                             first = false; 
                         }
                         full += line;
-                        aiDiv.innerHTML = marked.parse(full); // USAR MARKED
-                        chatMessages.scrollTop = chatMessages.scrollHeight;
+                        aiDiv.innerHTML = marked.parse(full);
+                        
+                        // Smart Scroll: Solo si está cerca del fondo
+                        const isAtBottom = chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight < 100;
+                        if (isAtBottom) {
+                            chatMessages.scrollTop = chatMessages.scrollHeight;
+                        }
                     }
                 }
             }
-            chatHistory.push({role:'user', content:text}, {role:'assistant', content:full});
+            // Al terminar, recargar historial para actualizar títulos si es necesario
+            loadChatHistory();
         } catch (e) { 
             aiDiv.textContent = 'Ratatui se ha distraído... parece que algo huele raro en la cocina. Intenta de nuevo.'; 
             aiDiv.classList.remove('typing');
@@ -237,6 +404,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     sortSelect.onchange = sortAndRender;
     sendChat.onclick = handleChat;
+    newChatBtn.onclick = createNewChat;
     chatInput.onkeypress = (e) => { if(e.key==='Enter') handleChat(); };
     
     addRecipeBtn.onclick = () => addModal.style.display = 'flex';
@@ -334,6 +502,7 @@ document.addEventListener('DOMContentLoaded', () => {
         else f.push(id);
         localStorage.setItem('favs', JSON.stringify(f));
         el.classList.toggle('active');
+        renderList(); // Update the sidebar stars immediately
     };
 
     function isFav(id) { return JSON.parse(localStorage.getItem('favs')||'[]').includes(id); }

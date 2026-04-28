@@ -14,6 +14,7 @@ Requisitos previos:
 import json
 import re
 import uuid
+import time
 from typing import Optional, List
 
 import httpx
@@ -45,6 +46,12 @@ _chroma = chromadb.PersistentClient(path="./chroma_db")
 def get_col():
     return _chroma.get_or_create_collection(
         name="recipes",
+        metadata={"hnsw:space": "cosine"},
+    )
+
+def get_chat_col():
+    return _chroma.get_or_create_collection(
+        name="chats",
         metadata={"hnsw:space": "cosine"},
     )
 
@@ -109,7 +116,10 @@ class SearchRequest(BaseModel):
 
 class ChatRequest(BaseModel):
     message: str
-    history: Optional[List[dict]] = []
+    chat_id: Optional[str] = None
+
+class ChatSessionCreate(BaseModel):
+    title: str = "Nueva conversación"
 
 # ─────────────────────────── Nivel 3: System Prompt RAG ──────────────
 # Ingeniería de prompt con Chain-of-Thought obligatorio para cálculos
@@ -383,6 +393,21 @@ async def chat(req: ChatRequest):
     """
     from fastapi.responses import StreamingResponse
     
+    chat_id = req.chat_id
+    if not chat_id:
+        chat_id = str(uuid.uuid4())
+        get_chat_col().add(
+            ids=[chat_id],
+            documents=[json.dumps([], ensure_ascii=False)],
+            metadatas=[{"title": "Conversación rápida", "updated_at": 0}]
+        )
+
+    # Cargar historial de la BBDD
+    chat_data = get_chat_col().get(ids=[chat_id])
+    history = []
+    if chat_data["documents"]:
+        history = json.loads(chat_data["documents"][0])
+
     alchemy_mode = is_alchemy(req.message)
     n_ctx = 6 if alchemy_mode else 4
 
@@ -401,7 +426,8 @@ async def chat(req: ChatRequest):
         context_block = "\n\n".join(parts)
 
     messages: list[dict] = [{"role": "system", "content": SYSTEM_PROMPT}]
-    for msg in req.history[-10:]:
+    # Usar los últimos 10 del historial real
+    for msg in history[-10:]:
         messages.append(msg)
 
     user_content = (
@@ -416,11 +442,76 @@ async def chat(req: ChatRequest):
         # Enviar fuentes primero
         sources = [r.get("titulo") for r in context_recipes[:3]]
         yield f"SOURCES: {json.dumps(sources, ensure_ascii=False)}\n"
+        yield f"CHAT_ID: {chat_id}\n"
         
+        full_ai_response = ""
         async for chunk in llm_stream(messages, temperature=temperature):
+            if chunk and chunk != "\n\n[DONE]":
+                full_ai_response += chunk
             yield chunk
+        
+        # Al terminar, guardar en BBDD
+        history.append({"role": "user", "content": req.message})
+        history.append({"role": "assistant", "content": full_ai_response})
+        
+        # Si el título es el por defecto, intentar generar uno
+        current_meta = chat_data["metadatas"][0]
+        if current_meta.get("title") == "Nueva conversación" or current_meta.get("title") == "Conversación rápida":
+            current_meta["title"] = req.message[:30] + "..." if len(req.message) > 30 else req.message
+
+        import time
+        get_chat_col().update(
+            ids=[chat_id],
+            documents=[json.dumps(history, ensure_ascii=False)],
+            metadatas=[{"title": current_meta["title"], "updated_at": int(time.time())}]
+        )
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+@app.get("/api/chats")
+async def list_chats():
+    data = get_chat_col().get(include=["metadatas"])
+    chats = []
+    for i, cid in enumerate(data["ids"]):
+        chats.append({
+            "id": cid,
+            "title": data["metadatas"][i].get("title", "Conversación"),
+            "updated_at": data["metadatas"][i].get("updated_at", 0)
+        })
+    # Ordenar por fecha descending
+    chats.sort(key=lambda x: x["updated_at"], reverse=True)
+    return {"chats": chats}
+
+
+@app.post("/api/chats")
+async def create_chat(req: ChatSessionCreate):
+    chat_id = str(uuid.uuid4())
+    import time
+    get_chat_col().add(
+        ids=[chat_id],
+        documents=[json.dumps([], ensure_ascii=False)],
+        metadatas=[{"title": req.title, "updated_at": int(time.time())}]
+    )
+    return {"id": chat_id, "title": req.title}
+
+
+@app.get("/api/chats/{chat_id}")
+async def get_chat_history(chat_id: str):
+    data = get_chat_col().get(ids=[chat_id])
+    if not data["ids"]:
+        raise HTTPException(404, "Chat no encontrado")
+    return {
+        "id": chat_id,
+        "title": data["metadatas"][0].get("title"),
+        "history": json.loads(data["documents"][0])
+    }
+
+
+@app.delete("/api/chats/{chat_id}")
+async def delete_chat(chat_id: str):
+    get_chat_col().delete(ids=[chat_id])
+    return {"status": "deleted"}
 
 @app.post("/api/recipes/extract")
 async def recipe_extract(req: ExtractRequest):
