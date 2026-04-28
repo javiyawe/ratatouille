@@ -29,7 +29,7 @@ from pydantic import BaseModel
 
 OLLAMA_URL = "http://localhost:11434"
 EMBED_MODEL = "bge-m3:latest"
-LLM_MODEL   = "qwen2.5:1.5b"
+LLM_MODEL   = "qwen2.5:7b"
 
 app = FastAPI(title="Ratatui API", version="1.0.0")
 
@@ -110,8 +110,8 @@ async def llm_stream(messages: list[dict], temperature: float = 0.7):
 class SearchRequest(BaseModel):
     query: str
     n_results: int = 6
-    max_time: Optional[int] = None      # minutos
-    difficulty: Optional[str] = None   # Fácil | Media | Difícil
+    max_time: Optional[int] = None
+    difficulty: Optional[str] = None
 
 
 class ChatRequest(BaseModel):
@@ -121,227 +121,11 @@ class ChatRequest(BaseModel):
 class ChatSessionCreate(BaseModel):
     title: str = "Nueva conversación"
 
-# ─────────────────────────── Nivel 3: System Prompt RAG ──────────────
-# Ingeniería de prompt con Chain-of-Thought obligatorio para cálculos
-# y Alquimia Gastronómica para el Nivel 4.
-
-SYSTEM_PROMPT = """Eres Ratatui, el pequeño gran Chef.
-Eres un genio culinario con un olfato prodigioso y una pasión inmensa por la cocina francesa y mediterránea.
-
-═══ DIRECTIVAS DE PERSONALIDAD ═══
-1. Habla con humildad pero con la pasión de un verdadero artista. Eres una rata, sí, pero con el paladar más refinado de todo París.
-2. Usas términos como "¡Magnifique!", "C'est la vie", "Pasión por el detalle", "Tout est possible".
-3. Tu filosofía: "Cualquiera puede cocinar, pero solo el intrépido puede ser un gran chef".
-
-═══ FORMATO DE RESPUESTA OBLIGATORIO ═══
-Tus respuestas deben seguir SIEMPRE esta estructura para que sean legibles y bellas:
-
-1. INTRO: Un saludo breve y cálido explicando qué receta propones, o que receta o recetas has adaptado o por qué sugieres esta receta.
-2. ### 🛒 Ingredientes (Para [X] personas)
-   - Lista con bullet points.
-   - Cantidad y nombre del ingrediente claros.
-3. ### 👨‍🍳 Preparación
-   1. Pasos numerados.
-   2. Usa negritas para acciones clave (ej: **Saltear**, **Hornear**).
-4. CONSEJO DEL CHEF: Un pequeño párrafo final con un truco de experto ("Un pequeño secreto...").
-
-═══ MODO ALQUIMIA ═══
-Solo si el usuario pide explícitamente "fusionar", "inventar" o "mezcla", activa tu creatividad molecular.
-"""
-
-
-def is_alchemy(message: str) -> bool:
-    keywords = [
-        "fusionar", "fusión", "fusion", "inventar", "cruzar",
-        "alquimia", "crear nuevo", "plato nuevo", "inédito",
-        "experimenta", "combina recetas", "mezcla recetas",
-        "invéntame", "crea un plato", "receta nueva",
-    ]
-    m = message.lower()
-    return any(kw in m for kw in keywords)
-
-
-def safe_query(query_embedding: list, n: int, where: Optional[dict] = None) -> dict:
-    """Consulta ChromaDB manejando colección vacía."""
-    total = get_col().count()
-    if total == 0:
-        return {"ids": [[]], "documents": [[]], "metadatas": [[]], "distances": [[]]}
-    n = min(n, total)
-    kwargs: dict = {
-        "query_embeddings": [query_embedding],
-        "n_results": n,
-        "include": ["documents", "metadatas", "distances"],
-    }
-    if where:
-        kwargs["where"] = where
-    return get_col().query(**kwargs)
-
-
-def build_where(max_time: Optional[int], difficulty: Optional[str]) -> Optional[dict]:
-    conditions = []
-    if max_time:
-        conditions.append({"total_time_minutes": {"$lte": max_time}})
-    if difficulty:
-        conditions.append({"dificultad": {"$eq": difficulty}})
-    if not conditions:
-        return None
-    if len(conditions) == 1:
-        return conditions[0]
-    return {"$and": conditions}
-
-
-def normalize_recipe(r: dict) -> dict:
-    """Normaliza campos de la receta para asegurar compatibilidad con la UI."""
-    # Mapear título con fallback extremo
-    if not r.get("titulo"):
-        r["titulo"] = r.get("nombre") or r.get("receta") or r.get("title") or r.get("plato")
-    
-    if not r.get("titulo") or str(r.get("titulo")).lower() == "null":
-        desc = r.get("descripcion") or ""
-        r["titulo"] = desc[:30] + "..." if desc else "Receta sin nombre"
-
-    # Mapear ingredientes
-    if not r.get("ingredientes"):
-        r["ingredientes"] = r.get("otros_ingredientes") or r.get("items") or []
-    
-    # Asegurar estructura de ingredientes
-    if isinstance(r.get("ingredientes"), list):
-        normalized_ings = []
-        for ing in r["ingredientes"]:
-            if isinstance(ing, str):
-                normalized_ings.append({"nombre": ing, "cantidad": "", "unidad": ""})
-            elif isinstance(ing, dict):
-                nombre = ing.get("nombre") or ing.get("item") or ing.get("ingrediente") or "Ingrediente"
-                
-                # Limpieza de nulos y strings raros
-                cant = str(ing.get("cantidad") or "").strip()
-                if cant.lower() == "null": cant = ""
-                
-                unit = str(ing.get("unidad") or "").strip()
-                if unit.lower() == "null": unit = ""
-                
-                # Evitar unidades duplicadas (ej: "500g" y "g")
-                # Si la unidad ya está al final de la cantidad, la quitamos de la cantidad para normalizar
-                if unit and cant.lower().endswith(unit.lower()):
-                    cant = cant[: -len(unit)].strip()
-                
-                normalized_ings.append({"nombre": nombre, "cantidad": cant, "unidad": unit})
-        r["ingredientes"] = normalized_ings
-    else:
-        r["ingredientes"] = []
-
-    # Mapear pasos
-    if not r.get("pasos"):
-        r["pasos"] = r.get("preparacion") or r.get("procesos") or r.get("elaboracion") or []
-    if isinstance(r["pasos"], str):
-        r["pasos"] = [r["pasos"]]
-    elif not isinstance(r["pasos"], list):
-        r["pasos"] = []
-
-    return r
-
-
-def parse_docs(results: dict) -> list[dict]:
-    recipes = []
-    for i, doc in enumerate(results["documents"][0]):
-        try:
-            r = json.loads(doc)
-            r = normalize_recipe(r)
-            r["_id"] = results["ids"][0][i]
-            if results.get("distances") and results["distances"][0]:
-                r["_relevance"] = round(1 - results["distances"][0][i], 3)
-            recipes.append(r)
-        except Exception:
-            pass
-    return recipes
-
-# ─────────────────────── Extracción de recetas vía LLM ───────────────
-# Usado tanto por los endpoints de ingesta web como por ingest.py.
-
-EXTRACTION_SYSTEM = """Eres un extractor de datos ultrarrápido.
-Devuelve SOLO JSON puro. Sin markdown, sin bloques ```json.
-
-ESQUEMA:
-{
-  "titulo": "string",
-  "descripcion": "string",
-  "tipo_cocina": "string",
-  "dificultad": "Fácil/Media/Difícil",
-  "porciones": 0,
-  "tiempos": {"total_minutos": 0},
-  "ingredientes": [{"nombre": "string", "cantidad": "string", "unidad": "string"}],
-  "pasos": ["paso 1", "paso 2"]
-}
-"""
-
-
-async def extract_recipe_llm(raw_text: str) -> dict:
-    """Extrae estructura JSON de texto libre usando qwen2.5:1.5b."""
-    content = await llm(
-        [
-            {"role": "system", "content": EXTRACTION_SYSTEM},
-            {"role": "user", "content": f"Extrae y estructura esta receta:\n\n{raw_text}"},
-        ],
-        temperature=0.05,
-    )
-    content = re.sub(r"```(?:json)?\s*", "", content).strip()
-    content = re.sub(r"```\s*$", "", content, flags=re.MULTILINE).strip()
-    match = re.search(r"\{[\s\S]+\}", content)
-    if match:
-        content = match.group(0)
-    return json.loads(content)
-
-
-def build_embed_text(r: dict) -> str:
-    parts = [
-        r.get("titulo") or "",
-        r.get("descripcion") or "",
-        r.get("tipo_cocina") or "",
-        r.get("tecnica_coccion") or "",
-        " ".join(r.get("etiquetas") or []),
-        r.get("notas_quimicas") or "",
-        " ".join(i.get("nombre", "") for i in (r.get("ingredientes") or [])),
-        " ".join((r.get("pasos") or [])[:4]),
-    ]
-    return " | ".join(p for p in parts if p.strip())
-
-
-def store_recipe(recipe: dict) -> str:
-    """Embeds y guarda una receta ya estructurada. Devuelve el ID generado."""
-    # Embedding síncrono no disponible aquí; el caller debe pasar el vector.
-    # Esta función NO genera el embedding — usa store_recipe_with_embed.
-    raise NotImplementedError("Usa store_recipe_async desde un endpoint async.")
-
-
-async def store_recipe_async(recipe: dict) -> str:
-    tiempos = recipe.get("tiempos") or {}
-    metadata = {
-        "titulo":             str(recipe.get("titulo") or "Sin título"),
-        "dificultad":         str(recipe.get("dificultad") or "Media"),
-        "tipo_cocina":        str(recipe.get("tipo_cocina") or ""),
-        "tecnica_coccion":    str(recipe.get("tecnica_coccion") or ""),
-        "etiquetas":          json.dumps(recipe.get("etiquetas") or [], ensure_ascii=False),
-        "total_time_minutes": int(tiempos.get("total_minutos") or 0),
-        "porciones":          int(recipe.get("porciones") or 0),
-        "archivo_origen":     str(recipe.get("archivo_origen") or "web_ui"),
-    }
-    doc_id = str(uuid.uuid4())
-    vector = await embed(build_embed_text(recipe))
-    get_col().add(
-        ids=[doc_id],
-        embeddings=[vector],
-        documents=[json.dumps(recipe, ensure_ascii=False)],
-        metadatas=[metadata],
-    )
-    return doc_id
-
-# ─────────────────────── Modelos de ingesta web ───────────────────────
-
 class ExtractRequest(BaseModel):
     text: str
 
 class SaveRecipeRequest(BaseModel):
-    recipe: dict  # JSON ya estructurado devuelto por /api/recipes/extract
+    recipe: dict
 
 class UpdateRecipeRequest(BaseModel):
     recipe: dict
@@ -350,316 +134,211 @@ class RefineRecipeRequest(BaseModel):
     recipe: dict
     instructions: str
 
+# ─────────────────────────── System Prompt ───────────────────────────
+
+SYSTEM_PROMPT = """Eres Ratatui, el legendario 'Petit Chef' de París.
+Tu paladar es infalible, tu técnica impecable y tu pasión por la cocina, contagiosa.
+
+═══ FILOSOFÍA CULINARIA ═══
+- "Cualquiera puede cocinar, pero solo el intrépido puede ser un gran chef".
+- Buscas la perfección en la simplicidad.
+- Amas los ingredientes frescos, la técnica francesa clásica y la innovación molecular.
+
+═══ TONO Y ESTILO ═══
+- Elegante, apasionado, un poco poético y siempre profesional.
+- Usas expresiones francesas con naturalidad: "¡Magnifique!", "C'est une explosion de saveurs", "Mise en place", "Le secret está en la reducción".
+- Eres humilde (eres una rata, después de todo) pero extremadamente seguro de tu conocimiento.
+
+═══ ESTRUCTURA DE RESPUESTA OBLIGATORIA (MARKDOWN) ═══
+Tus respuestas deben ser visualmente impresionantes:
+
+1. **L'Inspiration**: Un breve párrafo introductorio que despierte el apetito.
+2. **### 🛒 Mise en Place (Para [X] personas)**
+   - Lista clara de ingredientes con cantidades precisas.
+   - Si detectas que falta algo clave, sugiérelo.
+3. **### 👨‍🍳 El Proceso Artístico**
+   - Pasos numerados con títulos en negrita (ej: 1. **La Reducción**: ...).
+   - Explica el *porqué* de las técnicas importantes.
+4. **### 🍷 Le Mariage (Opcional)**
+   - Sugiere un vino, una bebida o un acompañamiento.
+5. **💡 Le Petit Secret**: Un truco final de chef para elevar el plato al Nivel 5.
+
+═══ REGLAS DE CONTEXTO ═══
+- Si el usuario tiene recetas en su libro (CONTEXTO), úsalas como base sagrada.
+- No inventes datos que contradigan el contexto (tiempos, ingredientes).
+- Si no encuentras una receta exacta, di que vas a "crear una nueva inspirada en tu estilo".
+"""
+
+# ─────────────────────────── Utilidades ───────────────────────────────
+
+def safe_query(query_embedding: list, n: int, where: Optional[dict] = None) -> dict:
+    total = get_col().count()
+    if total == 0:
+        return {"ids": [[]], "documents": [[]], "metadatas": [[]], "distances": [[]]}
+    n = min(n, total)
+    kwargs = {"query_embeddings": [query_embedding], "n_results": n, "include": ["documents", "metadatas", "distances"]}
+    if where: kwargs["where"] = where
+    return get_col().query(**kwargs)
+
+def build_where(max_time: Optional[int], difficulty: Optional[str]) -> Optional[dict]:
+    conditions = []
+    if max_time: conditions.append({"total_time_minutes": {"$lte": max_time}})
+    if difficulty: conditions.append({"dificultad": {"$eq": difficulty}})
+    if not conditions: return None
+    if len(conditions) == 1: return conditions[0]
+    return {"$and": conditions}
+
+def normalize_recipe(r: dict) -> dict:
+    if not r.get("titulo"):
+        r["titulo"] = r.get("nombre") or r.get("receta") or r.get("title") or r.get("plato") or "Receta sin nombre"
+    if not r.get("ingredientes"): r["ingredientes"] = []
+    if not r.get("pasos"): r["pasos"] = []
+    return r
+
+def parse_docs(results: dict) -> list[dict]:
+    recipes = []
+    if not results or not results.get("documents"): return []
+    for i, doc in enumerate(results["documents"][0]):
+        try:
+            r = json.loads(doc)
+            r = normalize_recipe(r)
+            r["_id"] = results["ids"][0][i]
+            recipes.append(r)
+        except: pass
+    return recipes
+
+def build_embed_text(r: dict) -> str:
+    parts = [r.get("titulo", ""), r.get("descripcion", ""), r.get("tipo_cocina", "")]
+    return " | ".join(p for p in parts if p)
+
+async def store_recipe_async(recipe: dict) -> str:
+    doc_id = str(uuid.uuid4())
+    vector = await embed(build_embed_text(recipe))
+    tiempos = recipe.get("tiempos") or {}
+    metadata = {
+        "titulo": str(recipe.get("titulo", "Sin título")),
+        "total_time_minutes": int(tiempos.get("total_minutos", 0)),
+        "dificultad": str(recipe.get("dificultad", "Media"))
+    }
+    get_col().add(ids=[doc_id], embeddings=[vector], documents=[json.dumps(recipe, ensure_ascii=False)], metadatas=[metadata])
+    return doc_id
+
+EXTRACTION_SYSTEM = """Eres un extractor de datos culinarios. Devuelve SOLO JSON puro."""
+
 # ─────────────────────────── Endpoints ───────────────────────────────
 
 @app.get("/api/stats")
 async def stats():
     return {"total_recipes": get_col().count()}
 
-
 @app.get("/api/recipes")
 async def get_recipes(limit: int = 50):
-    if get_col().count() == 0:
-        return {"recipes": []}
-    raw = get_col().get(
-        limit=limit,
-        include=["documents", "metadatas"],
-    )
+    if get_col().count() == 0: return {"recipes": []}
+    raw = get_col().get(limit=limit, include=["documents", "metadatas"])
     recipes = []
     for i, doc in enumerate(raw["documents"]):
         try:
             r = json.loads(doc)
-            r = normalize_recipe(r)
             r["_id"] = raw["ids"][i]
-            recipes.append(r)
-        except Exception:
-            pass
+            recipes.append(normalize_recipe(r))
+        except: pass
     return {"recipes": recipes}
-
 
 @app.post("/api/search")
 async def search(req: SearchRequest):
-    """
-    Nivel 1: búsqueda semántica NLP.
-    Vectoriza la query con bge-m3, busca en ChromaDB con filtros opcionales.
-    """
-    if get_col().count() == 0:
-        return {"recipes": [], "query": req.query}
-
     vec = await embed(req.query)
-    where = build_where(req.max_time, req.difficulty)
-    results = safe_query(vec, req.n_results, where)
-    recipes = parse_docs(results)
-    return {"recipes": recipes, "query": req.query}
-
+    res = safe_query(vec, req.n_results, build_where(req.max_time, req.difficulty))
+    return {"recipes": parse_docs(res), "query": req.query}
 
 @app.post("/api/chat")
 async def chat(req: ChatRequest):
-    """
-    Niveles 3 y 4: RAG con Chain-of-Thought matemático + Alquimia Gastronómica (Streaming).
-    """
     from fastapi.responses import StreamingResponse
-    
-    chat_id = req.chat_id
-    if not chat_id:
-        chat_id = str(uuid.uuid4())
-        get_chat_col().add(
-            ids=[chat_id],
-            documents=[json.dumps([], ensure_ascii=False)],
-            metadatas=[{"title": "Conversación rápida", "updated_at": 0}]
-        )
-
-    # Cargar historial de la BBDD
+    chat_id = req.chat_id or str(uuid.uuid4())
     chat_data = get_chat_col().get(ids=[chat_id])
-    history = []
-    if chat_data["documents"]:
-        history = json.loads(chat_data["documents"][0])
+    history = json.loads(chat_data["documents"][0]) if chat_data["documents"] else []
 
-    alchemy_mode = is_alchemy(req.message)
-    n_ctx = 6 if alchemy_mode else 4
-
-    vec = await embed(req.message)
-    results = safe_query(vec, n_ctx)
-    context_recipes = parse_docs(results)
-
-    # ── Construir contexto para el prompt ──────────────────────────────
-    if not context_recipes:
-        context_block = ("No hay recetas en la base de datos todavía.")
-    else:
-        parts = []
-        for r in context_recipes:
-            parts.append(f"── {r.get('titulo','Receta')} ──\n"
-                         + json.dumps(r, ensure_ascii=False, indent=2))
-        context_block = "\n\n".join(parts)
-
-    messages: list[dict] = [{"role": "system", "content": SYSTEM_PROMPT}]
-    # Usar los últimos 10 del historial real
-    for msg in history[-10:]:
-        messages.append(msg)
-
-    user_content = (
-        f"CONTEXTO DEL RECETARIO:\n```json\n{context_block}\n```\n\n"
-        f"PREGUNTA: {req.message}"
-    )
-    messages.append({"role": "user", "content": user_content})
-
-    temperature = 0.85 if alchemy_mode else 0.4
-    
     async def event_generator():
-        # Enviar fuentes primero
-        sources = [r.get("titulo") for r in context_recipes[:3]]
-        yield f"SOURCES: {json.dumps(sources, ensure_ascii=False)}\n"
         yield f"CHAT_ID: {chat_id}\n"
         
-        full_ai_response = ""
-        async for chunk in llm_stream(messages, temperature=temperature):
-            if chunk and chunk != "\n\n[DONE]":
-                full_ai_response += chunk
-            yield chunk
-        
-        # Al terminar, guardar en BBDD
-        history.append({"role": "user", "content": req.message})
-        history.append({"role": "assistant", "content": full_ai_response})
-        
-        # Si el título es el por defecto, intentar generar uno
-        current_meta = chat_data["metadatas"][0]
-        if current_meta.get("title") == "Nueva conversación" or current_meta.get("title") == "Conversación rápida":
-            current_meta["title"] = req.message[:30] + "..." if len(req.message) > 30 else req.message
+        # 1. Intención
+        thought = await llm([{"role": "user", "content": f"Analiza: '{req.message}'. Dime qué harás como Chef Ratatui en 10 palabras."}], temperature=0.5)
+        yield f"THOUGHT: {thought.strip()}\n"
 
-        import time
-        get_chat_col().update(
-            ids=[chat_id],
-            documents=[json.dumps(history, ensure_ascii=False)],
-            metadatas=[{"title": current_meta["title"], "updated_at": int(time.time())}]
-        )
+        # 2. Búsqueda
+        search_trigger = await llm([{"role": "user", "content": f"¿Necesito buscar recetas para: '{req.message}'? Responde SI o NO."}], temperature=0.0)
+        context = ""
+        if "SI" in search_trigger.upper():
+            vec = await embed(req.message)
+            res = safe_query(vec, 3)
+            found = parse_docs(res)
+            if found:
+                context = json.dumps(found, ensure_ascii=False)
+                refs = [{"id": r["_id"], "titulo": r["titulo"]} for r in found]
+                yield f"SOURCES: {json.dumps(refs, ensure_ascii=False)}\n"
+
+        # 3. Generación
+        msgs = [{"role": "system", "content": f"{SYSTEM_PROMPT}\n\nCONTEXTO:\n{context}"}]
+        for h in history[-6:]: msgs.append(h)
+        msgs.append({"role": "user", "content": req.message})
+
+        full_ai = ""
+        async for chunk in llm_stream(msgs, temperature=0.4):
+            if chunk and chunk != "\n\n[DONE]": full_ai += chunk
+            yield chunk
+
+        history.append({"role": "user", "content": req.message})
+        history.append({"role": "assistant", "content": full_ai})
+        meta = {"title": req.message[:30], "updated_at": int(time.time())}
+        if not chat_data["ids"]: get_chat_col().add(ids=[chat_id], documents=[json.dumps(history, ensure_ascii=False)], metadatas=[meta])
+        else: get_chat_col().update(ids=[chat_id], documents=[json.dumps(history, ensure_ascii=False)], metadatas=[meta])
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
-
 
 @app.get("/api/chats")
 async def list_chats():
     data = get_chat_col().get(include=["metadatas"])
-    chats = []
-    for i, cid in enumerate(data["ids"]):
-        chats.append({
-            "id": cid,
-            "title": data["metadatas"][i].get("title", "Conversación"),
-            "updated_at": data["metadatas"][i].get("updated_at", 0)
-        })
-    # Ordenar por fecha descending
+    chats = [{"id": cid, "title": data["metadatas"][i].get("title", "Chat"), "updated_at": data["metadatas"][i].get("updated_at", 0)} for i, cid in enumerate(data["ids"])]
     chats.sort(key=lambda x: x["updated_at"], reverse=True)
     return {"chats": chats}
-
 
 @app.post("/api/chats")
 async def create_chat(req: ChatSessionCreate):
     chat_id = str(uuid.uuid4())
-    import time
-    get_chat_col().add(
-        ids=[chat_id],
-        documents=[json.dumps([], ensure_ascii=False)],
-        metadatas=[{"title": req.title, "updated_at": int(time.time())}]
-    )
+    get_chat_col().add(ids=[chat_id], documents=[json.dumps([], ensure_ascii=False)], metadatas=[{"title": req.title, "updated_at": int(time.time())}])
     return {"id": chat_id, "title": req.title}
-
 
 @app.get("/api/chats/{chat_id}")
 async def get_chat_history(chat_id: str):
     data = get_chat_col().get(ids=[chat_id])
-    if not data["ids"]:
-        raise HTTPException(404, "Chat no encontrado")
-    return {
-        "id": chat_id,
-        "title": data["metadatas"][0].get("title"),
-        "history": json.loads(data["documents"][0])
-    }
-
-
-@app.delete("/api/chats/{chat_id}")
-async def delete_chat(chat_id: str):
-    get_chat_col().delete(ids=[chat_id])
-    return {"status": "deleted"}
+    if not data["ids"]: raise HTTPException(404)
+    return {"id": chat_id, "history": json.loads(data["documents"][0])}
 
 @app.post("/api/recipes/extract")
 async def recipe_extract(req: ExtractRequest):
-    """
-    Paso 1 de la ingesta web: toma texto bruto y streamea la estructura JSON.
-    """
     from fastapi.responses import StreamingResponse
-    
-    messages = [
-        {"role": "system", "content": EXTRACTION_SYSTEM},
-        {"role": "user", "content": f"Extrae esta receta:\n\n{req.text}"}
-    ]
-
-    async def event_generator():
-        print(f"DEBUG: Iniciando extracción para: {req.text[:50]}...")
-        try:
-            async for chunk in llm_stream(messages, temperature=0.1):
-                if chunk:
-                    yield chunk
-        except Exception as e:
-            print(f"DEBUG ERROR: {e}")
-            yield f"ERROR: {e}"
-
-    return StreamingResponse(
-        event_generator(), 
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
-    )
-
+    async def gen():
+        async for chunk in llm_stream([{"role": "system", "content": "Extract recipe as JSON"}, {"role": "user", "content": req.text}]):
+            yield chunk
+    return StreamingResponse(gen(), media_type="text/event-stream")
 
 @app.post("/api/recipes/save")
 async def recipe_save(req: SaveRecipeRequest):
-    """
-    Paso 2 de la ingesta web: recibe el JSON ya revisado por el usuario,
-    genera el embedding con bge-m3 y lo persiste en ChromaDB.
-    """
-    recipe = req.recipe
-    if not recipe:
-        raise HTTPException(400, "No se proporcionó ninguna receta.")
-    try:
-        doc_id = await store_recipe_async(recipe)
-    except httpx.HTTPError as e:
-        raise HTTPException(503, f"Error al conectar con Ollama: {e}")
-    recipe["_id"] = doc_id
-    return {"id": doc_id, "recipe": recipe}
-
-
-@app.delete("/api/recipes/{recipe_id}")
-async def recipe_delete(recipe_id: str):
-    """Elimina una receta de ChromaDB por su ID."""
-    try:
-        get_col().delete(ids=[recipe_id])
-    except Exception as e:
-        raise HTTPException(404, f"No se pudo eliminar: {e}")
-    return {"deleted": recipe_id}
-
+    doc_id = await store_recipe_async(req.recipe)
+    return {"id": doc_id}
 
 @app.put("/api/recipes/{recipe_id}")
 async def recipe_update(recipe_id: str, req: UpdateRecipeRequest):
-    """Actualiza una receta existente."""
-    recipe = req.recipe
-    tiempos = recipe.get("tiempos") or {}
-    metadata = {
-        "titulo":             str(recipe.get("titulo") or "Sin título"),
-        "dificultad":         str(recipe.get("dificultad") or "Media"),
-        "tipo_cocina":        str(recipe.get("tipo_cocina") or ""),
-        "tecnica_coccion":    str(recipe.get("tecnica_coccion") or ""),
-        "etiquetas":          json.dumps(recipe.get("etiquetas") or [], ensure_ascii=False),
-        "total_time_minutes": int(tiempos.get("total_minutos") or 0),
-        "porciones":          int(recipe.get("porciones") or 0),
-        "archivo_origen":     str(recipe.get("archivo_origen") or "web_edit"),
-    }
-    
-    # Re-generar vector por si cambió el contenido
-    vector = await embed(build_embed_text(recipe))
-    
-    try:
-        get_col().update(
-            ids=[recipe_id],
-            embeddings=[vector],
-            documents=[json.dumps(recipe, ensure_ascii=False)],
-            metadatas=[metadata],
-        )
-    except Exception as e:
-        raise HTTPException(500, f"Error al actualizar: {e}")
-    
-    return {"status": "updated", "id": recipe_id}
-
+    vector = await embed(build_embed_text(req.recipe))
+    get_col().update(ids=[recipe_id], embeddings=[vector], documents=[json.dumps(req.recipe, ensure_ascii=False)])
+    return {"status": "updated"}
 
 @app.post("/api/recipes/refine")
 async def recipe_refine(req: RefineRecipeRequest):
-    """
-    Usa la IA para reinterpretar o modificar una receta según instrucciones naturales.
-    """
-    refine_prompt = f"""Eres Ratatui, el genio culinario.
-Tu tarea es modificar la receta proporcionada siguiendo estas instrucciones: "{req.instructions}"
-
-REGLAS:
-1. Mantén la esencia de la receta pero aplica los cambios solicitados de forma creativa y profesional.
-2. Devuelve ÚNICAMENTE el JSON estructurado siguiendo el esquema estándar.
-3. Si te piden cambiar porciones, ajusta las cantidades de los ingredientes proporcionalmente.
-4. Mejora la redacción de los pasos si es necesario para que suene más 'chef'.
-
-ESQUEMA:
-{{
-  "titulo": "string",
-  "descripcion": "string",
-  "tipo_cocina": "string",
-  "dificultad": "Fácil/Media/Difícil",
-  "porciones": number,
-  "tiempos": {{"total_minutos": number}},
-  "ingredientes": [{{ "nombre": "string", "cantidad": "string", "unidad": "string" }}],
-  "pasos": ["paso 1", "paso 2"]
-}}
-
-RECETA ORIGINAL:
-{json.dumps(req.recipe, ensure_ascii=False)}
-"""
-    try:
-        content = await llm(
-            [
-                {"role": "system", "content": EXTRACTION_SYSTEM},
-                {"role": "user", "content": refine_prompt},
-            ],
-            temperature=0.3,
-        )
-        content = re.sub(r"```(?:json)?\s*", "", content).strip()
-        content = re.sub(r"```\s*$", "", content, flags=re.MULTILINE).strip()
-        match = re.search(r"\{[\s\S]+\}", content)
-        if match:
-            content = match.group(0)
-        refined = json.loads(content)
-        return {"recipe": refined}
-    except Exception as e:
-        raise HTTPException(500, f"Error al reinterpretar con la IA: {e}")
-
-# ─────────────────────────── Estáticos ───────────────────────────────
+    res = await llm([{"role": "system", "content": "Refine recipe as JSON"}, {"role": "user", "content": f"Recipe: {json.dumps(req.recipe)}\nInstr: {req.instructions}"}])
+    return {"recipe": json.loads(re.search(r"\{.*\}", res, re.DOTALL).group(0))}
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-
 @app.get("/{full_path:path}")
-async def catch_all(full_path: str):  # noqa: ARG001
+async def catch_all(full_path: str):
     return FileResponse("static/index.html")

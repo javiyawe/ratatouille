@@ -217,7 +217,7 @@ document.addEventListener('DOMContentLoaded', () => {
         setTimeout(() => recipeDetail.scrollTop = 0, 0);
     };
 
-    // --- Chat Logic ---
+    // --- Ch    // --- Chat Logic Premium ---
 
     async function loadChatHistory() {
         try {
@@ -232,16 +232,34 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function renderChatHistory(chats) {
         if (!chats.length) {
-            chatHistoryList.innerHTML = '<p style="padding:1rem; color:#999; font-size:0.8rem; text-align:center;">No hay charlas previas.</p>';
+            chatHistoryList.innerHTML = '<p style="padding:1rem; color:#444; font-size:0.7rem; text-align:center;">No hay charlas previas.</p>';
             return;
         }
         chatHistoryList.innerHTML = chats.map(c => `
-            <div class="chat-history-item ${currentChatId === c.id ? 'active' : ''}" onclick="switchChat('${c.id}')">
-                <div class="chat-title">${c.title}</div>
-                <button class="delete-chat-btn" onclick="event.stopPropagation(); deleteChat('${c.id}')">×</button>
+            <div class="chat-history-item-premium ${currentChatId === c.id ? 'active' : ''}" onclick="switchChat('${c.id}')">
+                <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                    <div class="chat-title" style="color:#eee; font-size:0.85rem; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1;">
+                        ${c.title}
+                    </div>
+                    <button class="delete-chat-btn" onclick="event.stopPropagation(); deleteChat('${c.id}')" style="background:none; border:none; color:#444; cursor:pointer; padding:0 4px;">×</button>
+                </div>
+                <div style="font-size:0.6rem; color:#555; margin-top:4px;">${new Date(c.updated_at * 1000).toLocaleDateString()}</div>
             </div>
         `).join('');
     }
+
+    window.deleteChat = async (id) => {
+        if (!confirm('¿Borrar esta conversación?')) return;
+        try {
+            await fetch(`/api/chats/${id}`, { method: 'DELETE' });
+            if (currentChatId === id) {
+                currentChatId = null;
+                localStorage.removeItem('last_chat_id');
+                renderWelcome();
+            }
+            loadChatHistory();
+        } catch(e) { console.error(e); }
+    };
 
     window.switchChat = async (id, shouldLoad = true, updateUrl = true) => {
         if (updateUrl) {
@@ -252,18 +270,19 @@ document.addEventListener('DOMContentLoaded', () => {
         localStorage.setItem('last_chat_id', id);
         
         // UI feedback immediately
-        const items = document.querySelectorAll('.chat-history-item');
+        const items = document.querySelectorAll('.chat-history-item-premium');
         items.forEach(it => it.classList.toggle('active', it.getAttribute('onclick')?.includes(id)));
 
         if (!shouldLoad) return;
 
-        chatMessages.innerHTML = '<div style="padding:2rem; color:#999; text-align:center;">Cargando conversación...</div>';
+        chatMessages.innerHTML = '<div style="padding:4rem; color:#666; text-align:center; font-family:var(--serif); font-style:italic;">Preparando la mesa...</div>';
         try {
             const res = await fetch(`/api/chats/${id}`);
             const data = await res.json();
             chatMessages.innerHTML = '';
+            
             if (!data.history || !data.history.length) {
-                addMsg('ai', '¡Magnifique! Soy Ratatui. ¿Qué te gustaría cocinar hoy?');
+                renderWelcome();
             } else {
                 data.history.forEach(m => {
                     const aiDiv = addMsg(m.role === 'assistant' ? 'ai' : 'user', m.content);
@@ -278,7 +297,40 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    window.createNewChat = async () => {
+    function renderWelcome() {
+        chatMessages.innerHTML = `
+            <div class="welcome-container">
+                <div class="welcome-logo">🐀</div>
+                <h1>¡Bonjour!</h1>
+                <p>¿Qué alquimia culinaria realizaremos hoy?</p>
+                <div class="quick-prompts">
+                    <button onclick="setChatInput('¿Qué puedo cocinar con lo que tengo?')">📦 Mi despensa</button>
+                    <button onclick="setChatInput('Sugiéreme una cena romántica')">🕯️ Cena romántica</button>
+                    <button onclick="setChatInput('¿Cómo puedo mejorar mi risotto?')">🍚 Trucos de Risotto</button>
+                </div>
+            </div>
+        `;
+    }
+
+    window.setChatInput = (val) => {
+        chatInput.value = val;
+        chatInput.focus();
+    };
+
+    window.handleAction = (action) => {
+        const prompts = {
+            'pair': '¿Con qué vino o bebida me recomiendas maridar este plato?',
+            'shopping': 'Genera una lista de la compra organizada para esta receta.',
+            'scale': 'Ajusta las cantidades para 6 personas.',
+            'alquimia': 'Propón una variante creativa o fusión de este plato.'
+        };
+        if (prompts[action]) {
+            chatInput.value = prompts[action];
+            handleChat();
+        }
+    };
+
+    window.createNewChat = async (withWelcome = true) => {
         try {
             const res = await fetch('/api/chats', {
                 method: 'POST',
@@ -288,52 +340,53 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await res.json();
             currentChatId = data.id;
             localStorage.setItem('last_chat_id', currentChatId);
-            navigate(`/chat/${currentChatId}`);
-            loadChatHistory();
-            chatMessages.innerHTML = '';
-            addMsg('ai', '¡Magnifique! Soy Ratatui. He estado revisando tu despensa y estoy listo para crear algo extraordinario. ¿Qué te gustaría cocinar hoy?');
+            if (withWelcome) {
+                navigate(`/chat/${currentChatId}`);
+                loadChatHistory();
+                chatMessages.innerHTML = '';
+                renderWelcome();
+            }
+            return data.id;
         } catch(e) { console.error(e); }
     };
 
-    window.deleteChat = async (id) => {
-        if (!confirm('¿Borrar esta conversación?')) return;
-        try {
-            await fetch(`/api/chats/${id}`, { method: 'DELETE' });
-            if (currentChatId === id) {
-                currentChatId = null;
-                localStorage.removeItem('last_chat_id');
-                chatMessages.innerHTML = '<div class="msg ai">Elige o crea una conversación para empezar.</div>';
-            }
-            loadChatHistory();
-        } catch(e) { console.error(e); }
-    };
+    const chefStatus = document.getElementById('chefStatus');
 
     async function handleChat() {
         const text = chatInput.value.trim();
         if (!text) return;
 
+        // Limpiar bienvenida si existe
+        if (chatMessages.querySelector('.welcome-container')) {
+            chatMessages.innerHTML = '';
+        }
+
         addMsg('user', text);
         chatInput.value = '';
         
-        const aiDiv = addMsg('ai', '...');
+        if (!currentChatId) {
+            await createNewChat(false);
+        }
+
+        chefStatus.textContent = 'Ratatui está pensando...';
+        const aiDiv = addMsg('ai', '');
         aiDiv.classList.add('typing');
+        aiDiv.innerHTML = '<div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>';
+        
         let full = '';
 
         try {
             const res = await fetch('/api/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    message: text, 
-                    chat_id: currentChatId 
-                })
+                body: JSON.stringify({ message: text, chat_id: currentChatId })
             });
 
             if (!res.ok) throw new Error('Error en la comunicación');
-
             const reader = res.body.getReader();
             const decoder = new TextDecoder();
             let first = true;
+            let thoughtDiv = null;
 
             while (true) {
                 const { done, value } = await reader.read();
@@ -343,10 +396,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 const lines = chunk.split('\n');
                 
                 for (let line of lines) {
-                    if (line.startsWith('SOURCES: ')) {
+                    if (line.startsWith('THOUGHT: ')) {
+                        const t = line.replace('THOUGHT: ', '').trim();
+                        chefStatus.textContent = t;
+                    } else if (line.startsWith('SOURCES: ')) {
                         try {
                             const s = JSON.parse(line.replace('SOURCES: ',''));
-                            sourceNodes.innerHTML = s.map(n => `<div class="node-chip">${n}</div>`).join('');
+                            renderSources(s);
                         } catch(e) {}
                     } else if (line.startsWith('CHAT_ID: ')) {
                         const newId = line.replace('CHAT_ID: ', '').trim();
@@ -356,43 +412,87 @@ document.addEventListener('DOMContentLoaded', () => {
                             loadChatHistory();
                         }
                     } else if (line.trim() === '[DONE]') {
-                    } else if (line) {
-                        if (line.startsWith('{')) {
-                            try {
-                                const j = JSON.parse(line);
-                                line = j.response || line;
-                            } catch(e) {}
-                        }
-
+                        chefStatus.textContent = 'Ratatui ha terminado.';
+                    } else if (line.trim()) {
                         if (first) { 
                             aiDiv.textContent = ''; 
                             aiDiv.classList.remove('typing');
                             first = false; 
+                            chefStatus.textContent = 'Ratatui está escribiendo...';
                         }
-                        full += line;
-                        aiDiv.innerHTML = marked.parse(full);
-                        
-                        // Smart Scroll: Solo si está cerca del fondo
-                        const isAtBottom = chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight < 100;
-                        if (isAtBottom) {
-                            chatMessages.scrollTop = chatMessages.scrollHeight;
-                        }
+                        full += line + '\n';
+                        aiDiv.innerHTML = marked.parse(full + ' <span class="streaming-cursor"></span>');
+                        chatMessages.scrollTop = chatMessages.scrollHeight;
                     }
                 }
             }
-            // Al terminar, recargar historial para actualizar títulos si es necesario
+            aiDiv.innerHTML = marked.parse(full);
+            chefStatus.textContent = 'Listo para más magia...';
             loadChatHistory();
+            extractContext(full);
         } catch (e) { 
-            aiDiv.textContent = 'Ratatui se ha distraído... parece que algo huele raro en la cocina. Intenta de nuevo.'; 
+            aiDiv.textContent = 'Ratatui se ha distraído... algo huele raro. Intenta de nuevo.'; 
             aiDiv.classList.remove('typing');
+            chefStatus.textContent = 'Ratatui está confundido.';
+        }
+    }
+
+    function renderSources(sources) {
+        if (!sources.length) {
+            sourceNodes.innerHTML = '<div class="source-placeholder">No se han consultado recetas.</div>';
+            return;
+        }
+        sourceNodes.innerHTML = sources.map(s => `
+            <div class="node-chip-premium" onclick="viewRecipe('${s.id}')">
+                📖 ${s.titulo}
+            </div>
+        `).join('');
+        
+        // Si hay fuentes, mostrar el preview de la primera
+        if (sources[0]) {
+            showRecipePreview(sources[0].id);
+        }
+    }
+
+    async function showRecipePreview(id) {
+        const r = recipes.find(x => x._id === id);
+        if (!r) return;
+        
+        document.getElementById('currentRecipePreview').style.display = 'block';
+        document.getElementById('previewTitle').textContent = r.titulo;
+        document.getElementById('previewTime').textContent = `${r.tiempos?.total_minutos || '?'} min`;
+        document.getElementById('previewDiff').textContent = r.dificultad || 'Media';
+        
+        document.querySelector('.btn-focus').onclick = () => {
+            switchView('libro');
+            viewRecipe(id);
+        };
+    }
+
+    function extractContext(text) {
+        // Simple heuristic to extract ingredients from the AI response to show in the "Mise en Place"
+        const ingredientsSection = text.match(/### 🛒 Ingredientes[\s\S]*?(?=###|$)/);
+        if (ingredientsSection) {
+            const ings = ingredientsSection[0].split('\n')
+                .filter(l => l.trim().startsWith('-'))
+                .map(l => l.replace('-', '').trim().split(' ')[0]) // Just the first word/name
+                .slice(0, 8);
+            
+            const container = document.getElementById('detectedIngredients');
+            container.innerHTML = ings.map(i => `<span class="ing-bubble">${i}</span>`).join('');
         }
     }
 
     function addMsg(role, content) {
+        const container = document.createElement('div');
+        container.className = 'msg-container';
+        
         const d = document.createElement('div');
-        d.className = `msg ${role}`;
+        d.className = `msg-premium ${role}`;
         d.textContent = content;
-        chatMessages.appendChild(d);
+        
+        container.appendChild(d);
+        chatMessages.appendChild(container);
         chatMessages.scrollTop = chatMessages.scrollHeight;
         return d;
     }
