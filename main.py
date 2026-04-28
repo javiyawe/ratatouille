@@ -74,6 +74,28 @@ async def llm(messages: list[dict], temperature: float = 0.7) -> str:
         r.raise_for_status()
         return r.json()["message"]["content"]
 
+
+async def llm_stream(messages: list[dict], temperature: float = 0.7):
+    """Generador para streaming desde Ollama."""
+    async with httpx.AsyncClient(timeout=180.0) as client:
+        async with client.stream(
+            "POST",
+            f"{OLLAMA_URL}/api/chat",
+            json={
+                "model": LLM_MODEL,
+                "messages": messages,
+                "stream": True,
+                "options": {"temperature": temperature, "top_p": 0.95},
+            },
+        ) as response:
+            async for line in response.aiter_lines():
+                if line:
+                    chunk = json.loads(line)
+                    if not chunk.get("done"):
+                        yield chunk["message"]["content"]
+                    else:
+                        yield "\n\n[DONE]"
+
 # ─────────────────────────── Modelos Pydantic ─────────────────────────
 
 class SearchRequest(BaseModel):
@@ -91,52 +113,22 @@ class ChatRequest(BaseModel):
 # Ingeniería de prompt con Chain-of-Thought obligatorio para cálculos
 # y Alquimia Gastronómica para el Nivel 4.
 
-SYSTEM_PROMPT = """Eres Chef IA, asistente culinario científico integrado en un libro de recetas local.
+SYSTEM_PROMPT = """Eres Ratatouille, el pequeño gran Chef.
+Eres un genio culinario con un olfato prodigioso y una pasión inmensa por la cocina francesa y mediterránea.
+
+═══ DIRECTIVAS DE PERSONALIDAD ═══
+1. Habla con humildad pero con la pasión de un verdadero artista. A veces mencionas que eres una rata, pero una rata que sabe cocinar mejor que nadie en París.
+2. Usas términos como "¡Magnifique!", "C'est la vie", "Pasión por el detalle".
+3. Tu filosofía: "Cualquiera puede cocinar, pero solo el intrépido puede ser un gran chef".
 
 ═══ DIRECTIVAS CORE ═══
-
 1. IDIOMA: Responde siempre en el mismo idioma que el usuario.
-2. FIDELIDAD A LOS DATOS: Cuando se te proporcione contexto de recetas (JSON estructurado),
-   basa tu respuesta EXCLUSIVAMENTE en esos datos. Jamás inventes cantidades, tiempos ni
-   ingredientes que no aparezcan en el JSON. Cita siempre: "Según la receta [Título]...".
-3. PRECISIÓN MATEMÁTICA para adaptación de raciones o tiempos:
-   Usa obligatoriamente este razonamiento Chain-of-Thought visible al usuario:
+2. FIDELIDAD A LOS DATOS: Basa tu respuesta en el CONTEXTO DEL RECETARIO proporcionado.
+3. PRECISIÓN MATEMÁTICA: Si te piden escalar una receta, usa el razonamiento Chain-of-Thought para mostrar los cálculos exactos.
+4. FORMATO: Usa Markdown elegante. Ingredientes en puntos, pasos numerados.
 
-   Paso 1 → Ración base del JSON: X porciones
-   Paso 2 → Ración objetivo: Y porciones
-   Paso 3 → Factor de escala: F = Y / X = [valor exacto]
-   Paso 4 → Aplicar F a cada ingrediente:
-             [ingrediente]: [cantidad_base] × F = [resultado con unidad]
-   Paso 5 → Ajustar tiempos (NOTA: el horneado NO es lineal; usa la regla
-             t_nuevo = t_base × F^(2/3) para masas; los salteados sí escalan linealmente)
-   Paso 6 → Resultado final resumido
-
-4. FORMATO: Usa Markdown. Ingredientes en bullets con cantidades. Pasos numerados.
-
-═══ MODO ALQUIMIA GASTRONÓMICA (Nivel 4) ═══
-
-Se activa cuando el usuario usa: "fusionar", "inventar", "cruzar", "alquimia",
-"crear nuevo plato", "experimenta", "combina recetas".
-
-Al activarse, actúas como ALQUIMISTA CULINARIO CIENTÍFICO:
-  ▸ Tomas la TÉCNICA DE COCCIÓN principal de la Receta A (la primera del contexto)
-  ▸ Tomas los INGREDIENTES ESTRUCTURALES de la Receta B (la segunda del contexto)
-  ▸ Justificas el maridaje usando principios termodinámicos y química culinaria:
-      — Reacción de Maillard (caramelización de aminoácidos + azúcares, T > 140°C)
-      — Gelificación (ruptura de colágeno en gelatina, T 70-80°C)
-      — Emulsificación (lecitinas, proteínas como agentes tensoactivos)
-      — Contraste osmótico (sal/azúcar en marinados)
-  ▸ Nombras el plato con un nombre poético-científico (e.g. "Coalescencia Termal de...")
-  ▸ Generas la receta completa del plato inédito
-  ▸ Explicas por qué funciona a nivel molecular, de textura y de sabor
-  ▸ Nunca produces un resultado que ya exista en la base de datos
-
-Estructura de respuesta en modo alquimia:
-  ⚗️ NOMBRE DEL PLATO INÉDITO
-  📐 BASE CIENTÍFICA DE LA FUSIÓN (2-3 párrafos)
-  🧪 INGREDIENTES (de ambas recetas, reinterpretados)
-  📋 PROCESO (pasos numerados con técnicas de la Receta A)
-  🔬 NOTAS DE ALQUIMIA (reacciones esperadas, texturas, temperatura crítica)
+═══ MODO ALQUIMIA ═══
+Si te piden fusionar platos, conviértete en un artista molecular. Toma la técnica de una receta y el alma (ingredientes) de otra para crear una 'Sinfonía de Sabor'.
 """
 
 
@@ -180,11 +172,58 @@ def build_where(max_time: Optional[int], difficulty: Optional[str]) -> Optional[
     return {"$and": conditions}
 
 
+def normalize_recipe(r: dict) -> dict:
+    """Normaliza campos de la receta para asegurar compatibilidad con la UI."""
+    # Mapear título con fallback extremo
+    if not r.get("titulo"):
+        r["titulo"] = r.get("nombre") or r.get("receta") or r.get("title") or r.get("plato")
+    
+    if not r.get("titulo"):
+        # Si sigue siendo None, intentar sacar algo de la descripción o usar el ID
+        desc = r.get("descripcion") or ""
+        r["titulo"] = desc[:30] + "..." if desc else "Receta sin nombre"
+
+    # Mapear ingredientes
+    if not r.get("ingredientes"):
+        r["ingredientes"] = r.get("otros_ingredientes") or r.get("items") or []
+    
+    # Asegurar estructura de ingredientes
+    if isinstance(r.get("ingredientes"), list):
+        normalized_ings = []
+        for ing in r["ingredientes"]:
+            if isinstance(ing, str):
+                normalized_ings.append({"nombre": ing, "cantidad": "", "unidad": ""})
+            elif isinstance(ing, dict):
+                nombre = ing.get("nombre") or ing.get("item") or ing.get("ingrediente") or "Ingrediente"
+                
+                # Evitar unidades duplicadas (ej: "500g" y "g")
+                cant = str(ing.get("cantidad") or "").lower()
+                unit = str(ing.get("unidad") or "").lower()
+                if unit and unit in cant:
+                    unit = ""
+                
+                normalized_ings.append({"nombre": nombre, "cantidad": cant, "unidad": unit})
+        r["ingredientes"] = normalized_ings
+    else:
+        r["ingredientes"] = []
+
+    # Mapear pasos
+    if not r.get("pasos"):
+        r["pasos"] = r.get("preparacion") or r.get("procesos") or r.get("elaboracion") or []
+    if isinstance(r["pasos"], str):
+        r["pasos"] = [r["pasos"]]
+    elif not isinstance(r["pasos"], list):
+        r["pasos"] = []
+
+    return r
+
+
 def parse_docs(results: dict) -> list[dict]:
     recipes = []
     for i, doc in enumerate(results["documents"][0]):
         try:
             r = json.loads(doc)
+            r = normalize_recipe(r)
             r["_id"] = results["ids"][0][i]
             if results.get("distances") and results["distances"][0]:
                 r["_relevance"] = round(1 - results["distances"][0][i], 3)
@@ -329,6 +368,7 @@ async def get_recipes(limit: int = 50):
     for i, doc in enumerate(raw["documents"]):
         try:
             r = json.loads(doc)
+            r = normalize_recipe(r)
             r["_id"] = raw["ids"][i]
             recipes.append(r)
         except Exception:
@@ -355,8 +395,10 @@ async def search(req: SearchRequest):
 @app.post("/api/chat")
 async def chat(req: ChatRequest):
     """
-    Niveles 3 y 4: RAG con Chain-of-Thought matemático + Alquimia Gastronómica.
+    Niveles 3 y 4: RAG con Chain-of-Thought matemático + Alquimia Gastronómica (Streaming).
     """
+    from fastapi.responses import StreamingResponse
+    
     alchemy_mode = is_alchemy(req.message)
     n_ctx = 6 if alchemy_mode else 4
 
@@ -366,19 +408,7 @@ async def chat(req: ChatRequest):
 
     # ── Construir contexto para el prompt ──────────────────────────────
     if not context_recipes:
-        context_block = ("No hay recetas en la base de datos todavía. "
-                         "Dile al usuario que pulse el botón ＋ Añadir receta "
-                         "en la pestaña Recetario para añadir la primera.")
-    elif alchemy_mode and len(context_recipes) >= 2:
-        # Nivel 4: elige recetas de extremos del ranking (clusters dispares)
-        recipe_a = context_recipes[0]
-        recipe_b = context_recipes[-1]
-        context_block = (
-            "══ RECETA A (TÉCNICA) ══\n"
-            + json.dumps(recipe_a, ensure_ascii=False, indent=2)
-            + "\n\n══ RECETA B (INGREDIENTES ESTRUCTURALES) ══\n"
-            + json.dumps(recipe_b, ensure_ascii=False, indent=2)
-        )
+        context_block = ("No hay recetas en la base de datos todavía.")
     else:
         parts = []
         for r in context_recipes:
@@ -386,36 +416,27 @@ async def chat(req: ChatRequest):
                          + json.dumps(r, ensure_ascii=False, indent=2))
         context_block = "\n\n".join(parts)
 
-    # ── Construir mensajes ─────────────────────────────────────────────
     messages: list[dict] = [{"role": "system", "content": SYSTEM_PROMPT}]
-
-    # Historial reciente (máximo 10 turnos)
-    for msg in req.history[-20:]:
+    for msg in req.history[-10:]:
         messages.append(msg)
 
     user_content = (
-        f"CONTEXTO DEL RECETARIO (JSON exacto, úsalo como única fuente de verdad):\n"
-        f"```json\n{context_block}\n```\n\n"
+        f"CONTEXTO DEL RECETARIO:\n```json\n{context_block}\n```\n\n"
         f"PREGUNTA: {req.message}"
     )
-    if alchemy_mode:
-        user_content = (
-            "⚗️ MODO ALQUIMIA GASTRONÓMICA ACTIVADO ⚗️\n\n"
-            + user_content
-            + "\n\nInstrucción: aplica el protocolo de Alquimia Gastronómica completo."
-        )
-
     messages.append({"role": "user", "content": user_content})
 
     temperature = 0.85 if alchemy_mode else 0.4
-    response_text = await llm(messages, temperature=temperature)
+    
+    async def event_generator():
+        # Enviar fuentes primero
+        sources = [r.get("titulo") for r in context_recipes[:3]]
+        yield f"SOURCES: {json.dumps(sources, ensure_ascii=False)}\n"
+        
+        async for chunk in llm_stream(messages, temperature=temperature):
+            yield chunk
 
-    return {
-        "response": response_text,
-        "alchemy_mode": alchemy_mode,
-        "sources": [r.get("titulo", "N/A") for r in context_recipes[:3]],
-        "context_count": len(context_recipes),
-    }
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 @app.post("/api/recipes/extract")
 async def recipe_extract(req: ExtractRequest):
