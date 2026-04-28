@@ -157,7 +157,7 @@ document.addEventListener('DOMContentLoaded', () => {
         addMsg('user', text);
         chatInput.value = '';
         
-        // Ratatouille está pensando...
+        // Ratatui está pensando...
         const aiDiv = addMsg('ai', '...');
         aiDiv.classList.add('typing');
         let full = '';
@@ -210,7 +210,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             chatHistory.push({role:'user', content:text}, {role:'assistant', content:full});
         } catch (e) { 
-            aiDiv.textContent = 'Ratatouille se ha distraído... parece que algo huele raro en la cocina. Intenta de nuevo.'; 
+            aiDiv.textContent = 'Ratatui se ha distraído... parece que algo huele raro en la cocina. Intenta de nuevo.'; 
             aiDiv.classList.remove('typing');
         }
     }
@@ -248,7 +248,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         extractBtn.disabled = true;
         extractBtn.textContent = 'Interpretando...';
-        extractionPreview.innerHTML = '<div class="extract-item"><i>Ratatouille está leyendo tu receta...</i></div>';
+        extractionPreview.innerHTML = '<div class="extract-item"><i>Ratatui está leyendo tu receta...</i></div>';
         
         let fullJSON = '';
         try {
@@ -273,7 +273,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Mostrar progreso crudo con efecto "escáner"
                 extractionPreview.innerHTML = `
                     <div class="extract-item scann-effect">
-                        <b>Ratatouille está analizando...</b><br>
+                        <b>Ratatui está analizando...</b><br>
                         <small style="font-family:monospace; opacity:0.5; font-size:0.7rem;">${fullJSON.slice(-80)}</small>
                     </div>
                 `;
@@ -303,7 +303,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch(e) { 
             extractionPreview.innerHTML = `
                 <div class="extract-item" style="color:#e74c3c">
-                    <b>Ratatouille ha tenido un contratiempo:</b><br>
+                    <b>Ratatui ha tenido un contratiempo:</b><br>
                     No he podido interpretar bien la receta. Por favor, asegúrate de que el texto sea claro o intenta copiarlo de nuevo.
                 </div>`;
             console.error(e);

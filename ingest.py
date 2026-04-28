@@ -1,5 +1,5 @@
 """
-Ratatouille — Script de Ingesta Inteligente (Nivel 2)
+Ratatui — Script de Ingesta Inteligente (Nivel 2)
 
 Uso:
     python ingest.py                  # Procesa todos los .txt en ./recipes/
@@ -228,7 +228,7 @@ def clear_collection(col: chromadb.Collection):
 
 def main():
     print("╔══════════════════════════════════════════╗")
-    print("║  Ratatouille — Ingesta Inteligente       ║")
+    print("║  Ratatui — Ingesta Inteligente       ║")
     print("╚══════════════════════════════════════════╝")
 
     args = sys.argv[1:]

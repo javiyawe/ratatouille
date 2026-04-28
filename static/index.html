@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ratatouille — Recetario Inteligente</title>
+    <title>Ratatui — Recetario Inteligente</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,200..900;1,200..900&family=Outfit:wght@100..900&display=swap" rel="stylesheet">
@@ -13,10 +13,10 @@
 <body>
     <!-- Capa de Navegación Principal -->
     <nav class="top-nav">
-        <div class="nav-brand">🐀 Ratatouille</div>
+        <div class="nav-brand">🐀 Ratatui</div>
         <div class="nav-links">
             <button id="viewLibroBtn" class="nav-item active">Recetario</button>
-            <button id="viewChatBtn" class="nav-item">Chef Ratatouille</button>
+            <button id="viewChatBtn" class="nav-item">Chef Ratatui</button>
         </div>
         <div class="nav-actions">
             <button id="addRecipeBtn" class="btn-primary">＋ Nueva Receta</button>
@@ -63,12 +63,12 @@
                 <div class="chat-container">
                     <div id="chatMessages" class="chat-feed">
                         <div class="msg ai">
-                            ¡Magnifique! Soy Ratatouille. He estado revisando tu despensa y estoy listo para crear algo extraordinario. ¿Qué te gustaría cocinar hoy?
+                            ¡Magnifique! Soy Ratatui. He estado revisando tu despensa y estoy listo para crear algo extraordinario. ¿Qué te gustaría cocinar hoy?
                         </div>
                     </div>
                     <div class="chat-controls">
                         <div class="input-glow-wrapper">
-                            <input type="text" id="chatInput" placeholder="Pregúntale a Ratatouille...">
+                            <input type="text" id="chatInput" placeholder="Pregúntale a Ratatui...">
                             <button id="sendChat">➤</button>
                         </div>
                     </div>
@@ -90,7 +90,7 @@
                 <button class="close-modal">&times;</button>
             </header>
             <div class="modal-body">
-                <p class="help-text">Pega el texto de cualquier receta. Ratatouille la interpretará y la guardará en tu libro.</p>
+                <p class="help-text">Pega el texto de cualquier receta. Ratatui la interpretará y la guardará en tu libro.</p>
                 <textarea id="rawRecipeText" placeholder="Ej: Paella valenciana para 4 personas..."></textarea>
                 <div id="extractionPreview" class="extract-preview"></div>
             </div>

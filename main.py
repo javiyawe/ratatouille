@@ -30,7 +30,7 @@ OLLAMA_URL = "http://localhost:11434"
 EMBED_MODEL = "bge-m3:latest"
 LLM_MODEL   = "qwen2.5:7b"
 
-app = FastAPI(title="Ratatouille API", version="1.0.0")
+app = FastAPI(title="Ratatui API", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -115,7 +115,7 @@ class ChatRequest(BaseModel):
 # Ingeniería de prompt con Chain-of-Thought obligatorio para cálculos
 # y Alquimia Gastronómica para el Nivel 4.
 
-SYSTEM_PROMPT = """Eres Ratatouille, el pequeño gran Chef.
+SYSTEM_PROMPT = """Eres Ratatui, el pequeño gran Chef.
 Eres un genio culinario con un olfato prodigioso y una pasión inmensa por la cocina francesa y mediterránea.
 
 ═══ DIRECTIVAS DE PERSONALIDAD ═══
