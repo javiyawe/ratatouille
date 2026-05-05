@@ -23,6 +23,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const saveRecipeBtn = document.getElementById('saveRecipeBtn');
     const rawRecipeText = document.getElementById('rawRecipeText');
     const extractionPreview = document.getElementById('extractionPreview');
+    const previewPanel = document.getElementById('previewPanel');
+    const previewContent = document.getElementById('previewContent');
+    const closePreviewBtn = document.getElementById('closePreviewBtn');
 
     let recipes = [];
     let currentSelectedId = null;
@@ -213,9 +216,43 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
         `;
         // Scroll reset robusto
-        recipeDetail.scrollTo(0, 0);
-        setTimeout(() => recipeDetail.scrollTop = 0, 0);
+        recipeDetail.scrollTo({ top: 0, behavior: 'smooth' });
     };
+
+    window.previewRecipe = async (id) => {
+        let r = recipes.find(x => x._id === id);
+        if (!r) {
+            // Si no está en la lista cargada, intentar buscarla
+            try {
+                const res = await fetch(`/api/recipes?limit=500`);
+                const data = await res.json();
+                r = data.recipes.find(x => x._id === id);
+            } catch(e) {}
+        }
+        if (!r) return;
+
+        previewContent.innerHTML = `
+            <div class="detail-section">
+                <p><i>${r.descripcion || ''}</i></p>
+                <div class="detail-grid" style="grid-template-columns: 1fr 1fr; margin-top: 1rem;">
+                    <div class="info-card"><label>Tiempo</label><strong>${r.tiempos?.total_minutos || '?'} min</strong></div>
+                    <div class="info-card"><label>Nivel</label><strong>${r.dificultad || 'Media'}</strong></div>
+                </div>
+                <h3>Ingredientes</h3>
+                <ul style="padding-left: 1rem; font-size: 0.9rem;">
+                    ${r.ingredientes.map(i => `<li>${i.nombre}: ${i.cantidad} ${i.unidad}</li>`).join('')}
+                </ul>
+                <h3 style="margin-top: 1.5rem;">Pasos</h3>
+                <div style="font-size: 0.9rem;">
+                    ${r.pasos.map((s,i) => `<p style="margin-bottom:0.5rem"><b>${i+1}.</b> ${s}</p>`).join('')}
+                </div>
+                <button class="btn-primary" style="width:100%; margin-top:1rem;" onclick="viewRecipe('${id}')">Ver receta completa</button>
+            </div>
+        `;
+        previewPanel.classList.add('active');
+    };
+
+    closePreviewBtn.onclick = () => previewPanel.classList.remove('active');
 
     // --- Chat Logic ---
 
@@ -415,9 +452,18 @@ document.addEventListener('DOMContentLoaded', () => {
         const div = document.createElement('div');
         div.className = 'msg-sources';
         div.innerHTML = sources.map(s =>
-            `<button class="source-pill" onclick="viewRecipe('${s.id}')">📖 ${s.titulo}</button>`
+            `<button class="source-pill" onclick="previewRecipe('${s.id}')">📖 ${s.titulo}</button>`
         ).join('');
         body.appendChild(div);
+    }
+
+    function parseReferences(text) {
+        // Busca patrones como [ID: cualquier-id] y los convierte en spans interactivos
+        // El regex ahora es más permisivo para capturar cualquier ID dentro de los corchetes
+        return text.replace(/\[ID:\s*([^\]]+)\]/g, (match, id) => {
+            const cleanId = id.trim();
+            return `<span class="recipe-ref" onclick="previewRecipe('${cleanId}')" title="Haz clic para ver detalles de la receta">📖 Ver receta</span>`;
+        });
     }
 
     // ── handleChat — con buffer de streaming robusto ─────────────────────
@@ -498,7 +544,9 @@ document.addEventListener('DOMContentLoaded', () => {
                             chefStatus.textContent = 'Ratatui está escribiendo...';
                         }
                         full += line + '\n';
-                        aiDiv.innerHTML = marked.parse(full) + '<span class="streaming-cursor"></span>';
+                        aiDiv.innerHTML = marked.parse(parseReferences(full)) + '<span class="streaming-cursor"></span>';
+                        
+                        // Scroll instantáneo para seguir el ritmo del streaming
                         chatMessages.scrollTop = chatMessages.scrollHeight;
                     }
                 }
@@ -519,7 +567,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Renderizado final limpio (sin cursor)
             if (aiDiv) {
-                aiDiv.innerHTML = marked.parse(full);
+                aiDiv.innerHTML = marked.parse(parseReferences(full));
                 attachSources(aiDiv, pendingSources);
             } else {
                 thinkingWrap.remove();

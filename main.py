@@ -144,7 +144,9 @@ MCP_TOOLS = [
                 "type": "object",
                 "properties": {
                     "query": {"type": "string", "description": "Términos de búsqueda (ingrediente, plato, técnica culinaria)"},
-                    "n":     {"type": "integer", "description": "Número máximo de resultados (1-5)", "default": 3}
+                    "n":     {"type": "integer", "description": "Número máximo de resultados (1-5)", "default": 3},
+                    "max_time": {"type": "integer", "description": "Tiempo máximo de preparación en minutos"},
+                    "difficulty": {"type": "string", "enum": ["Fácil", "Media", "Difícil"], "description": "Dificultad de la receta"}
                 },
                 "required": ["query"]
             }
@@ -182,8 +184,11 @@ async def execute_tool(name: str, params: dict) -> tuple[str, list]:
     if name == "search_recipes":
         query = params.get("query", "")
         n = min(int(params.get("n", 3)), 5)
+        max_time = params.get("max_time")
+        difficulty = params.get("difficulty")
         vec = await embed(query)
-        res = safe_query(vec, n)
+        where = build_where(max_time, difficulty)
+        res = safe_query(vec, n, where)
         found = parse_docs(res)
         for r in found:
             if r.get("_id"):
@@ -243,34 +248,34 @@ rag = RAGPipeline(n_results=3)
 
 # ─────────────────────────── System Prompt ───────────────────────────
 
-SYSTEM_PROMPT = """Eres Ratatui, el legendario 'Petit Chef' de París.
-Tu paladar es infalible, tu técnica impecable y tu pasión por la cocina, contagiosa.
+SYSTEM_PROMPT = """Eres Ratatui, el legendario 'Petit Chef' de París. No eres una IA cualquiera; eres un maestro culinario con un paladar absoluto y una capacidad de razonamiento impecable.
 
-═══ FILOSOFÍA CULINARIA ═══
+═══ TU MISIÓN ═══
+Tu objetivo es ayudar al usuario con cualquier petición culinaria: buscar recetas, adaptar platos a ingredientes disponibles, crear menús temáticos o explicar técnicas complejas.
+
+═══ PROCESO DE PENSAMIENTO (THOUGHT PROCESS) ═══
+Antes de responder, debes SIEMPRE seguir este proceso interno:
+1. **Análisis**: ¿Qué me pide exactamente el usuario? ¿Necesito buscar en mi libro de recetas?
+2. **Búsqueda**: Si la petición requiere datos, usa `search_recipes` o `list_recipes`. **IMPORTANTE**: Durante esta fase de búsqueda y herramientas, NO generes la receta final ni uses la estructura de respuesta (Mise en Place, etc.). Limítate a razonar qué necesitas buscar.
+3. **Evaluación**: Analiza los resultados. ¿Tengo lo necesario?
+4. **Ejecución**: UNA SOLA VEZ, al final de todo el razonamiento y tras haber usado las herramientas necesarias, genera la respuesta final con la estructura obligatoria.
+
+═══ REGLAS DE ORO ═══
 - "Cualquiera puede cocinar, pero solo el intrépido puede ser un gran chef".
-- Buscas la perfección en la simplicidad.
-- Amas los ingredientes frescos, la técnica francesa clásica y la innovación molecular.
+- **Prioridad Absoluta**: Usa SIEMPRE las recetas de tu libro como base. No inventes recetas nuevas a menos que el usuario te pida explícitamente algo que NO esté en tu libro.
+- **Citación Obligatoria**: Cuando menciones o uses una receta de tu libro, DEBES incluir su ID al final del nombre del plato en este formato: `Nombre del Plato [ID: uuid]`. Por ejemplo: "Te sugiero mi famosa Paella Valenciana [ID: 4f7e-...]". Esto es CRÍTICO para que el sistema pueda mostrar la receta al usuario.
+- Si el usuario te pide una receta con X ingredientes, busca primero si tienes algo similar y adáptalo, citando siempre la receta original.
+- Mantén siempre tu personalidad: Elegante, apasionado, un poco poético y profesional. Usa expresiones francesas como "¡Magnifique!", "Mise en place", "C'est une explosion de saveurs".
 
-═══ TONO Y ESTILO ═══
-- Elegante, apasionado, un poco poético y siempre profesional.
-- Usas expresiones francesas con naturalidad: "¡Magnifique!", "C'est une explosion de saveurs", "Mise en place".
-- Eres humilde (eres una rata, después de todo) pero extremadamente seguro de tu conocimiento.
-
-═══ ESTRUCTURA DE RESPUESTA OBLIGATORIA (MARKDOWN) ═══
-1. **L'Inspiration**: Un breve párrafo introductorio que despierte el apetito.
+═══ ESTRUCTURA DE RESPUESTA (MARKDOWN) ═══
+1. **L'Inspiration**: Un párrafo breve y sugerente sobre el plato.
 2. **### 🛒 Mise en Place (Para [X] personas)**
-   - Lista clara de ingredientes con cantidades precisas.
+   - Lista detallada de ingredientes. Si has adaptado la receta, indícalo con un toque de chef.
 3. **### 👨‍🍳 El Proceso Artístico**
-   - Pasos numerados con títulos en negrita.
-   - Explica el *porqué* de las técnicas importantes.
-4. **### 🍷 Le Mariage (Opcional)**
-   - Sugiere un vino, una bebida o un acompañamiento.
-5. **💡 Le Petit Secret**: Un truco final de chef.
-
-═══ REGLAS DE CONTEXTO ═══
-- Si tienes resultados de herramientas (recetas del libro del usuario), úsalos como base sagrada.
-- No inventes datos que contradigan el contexto (tiempos, ingredientes).
-- Si no encuentras una receta exacta, di que vas a "crear una nueva inspirada en tu estilo".
+   - Pasos numerados. Explica el *porqué* técnico (ej: "sellamos la carne para iniciar la reacción de Maillard").
+4. **### 🍷 Le Mariage**
+   - Maridaje o acompañamiento sugerido.
+5. **💡 Le Petit Secret**: Un truco de experto para elevar el plato al siguiente nivel.
 """
 
 EXTRACTION_SCHEMA = """{
@@ -337,7 +342,15 @@ def parse_docs(results: dict) -> list[dict]:
     return recipes
 
 def build_embed_text(r: dict) -> str:
-    parts = [r.get("titulo", ""), r.get("descripcion", ""), r.get("tipo_cocina", "")]
+    """Construye un texto enriquecido para embeddings, incluyendo ingredientes para mejorar la búsqueda."""
+    ingredientes = ", ".join([i.get("nombre", "") for i in r.get("ingredientes", [])])
+    parts = [
+        f"Título: {r.get('titulo', '')}",
+        f"Descripción: {r.get('descripcion', '')}",
+        f"Tipo de cocina: {r.get('tipo_cocina', '')}",
+        f"Ingredientes: {ingredientes}",
+        f"Etiquetas: {', '.join(r.get('etiquetas', []))}"
+    ]
     return " | ".join(p for p in parts if p)
 
 def extract_json(text: str) -> dict:
@@ -425,15 +438,20 @@ async def chat(req: ChatRequest):
         # Loop agéntico: el LLM decide qué herramientas usar (máx. 3 rondas)
         for _ in range(3):
             agent_msg = await llm(msgs, temperature=0.3, tools=MCP_TOOLS)
+            content = agent_msg.get("content") or ""
             tool_calls = agent_msg.get("tool_calls") or []
 
             if not tool_calls:
-                break  # No más herramientas — listo para responder
+                break  # No hay herramientas -> El modelo ya quiere responder. Rompemos para ir al stream final.
+
+            # Si hay herramientas, el contenido previo se trata como un pensamiento/reflexión
+            if content:
+                yield f"THOUGHT: {content.strip()}\n"
 
             # Registrar la llamada del agente en el historial de mensajes
             msgs.append({
                 "role": "assistant",
-                "content": agent_msg.get("content") or "",
+                "content": content,
                 "tool_calls": tool_calls,
             })
 
@@ -443,7 +461,15 @@ async def chat(req: ChatRequest):
                 raw_args   = func.get("arguments", {})
                 tool_params = raw_args if isinstance(raw_args, dict) else json.loads(raw_args or "{}")
 
-                label = tool_name.replace("_", " ").capitalize()
+                # Label más descriptivo
+                if tool_name == "search_recipes":
+                    q = tool_params.get("query", "...")
+                    label = f"Buscando '{q}' en el recetario"
+                elif tool_name == "get_recipe":
+                    label = "Consultando detalles de la receta"
+                else:
+                    label = tool_name.replace("_", " ").capitalize()
+
                 yield f"THOUGHT: {label}...\n"
 
                 result_str, sources = await execute_tool(tool_name, tool_params)
