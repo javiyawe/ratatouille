@@ -318,7 +318,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         addUserMsg(m.content);
                     } else if (m.role === 'assistant') {
                         const bubble = addAiMsg('');
-                        bubble.innerHTML = marked.parse(m.content);
+                        bubble.innerHTML = parseReferences(marked.parse(m.content));
                     }
                 });
             }
@@ -416,7 +416,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function addAiMsg(content) {
         const { body, bubble } = createMsgWrap('ai');
-        if (content) bubble.innerHTML = marked.parse(content);
+        if (content) bubble.innerHTML = parseReferences(marked.parse(content));
         bubble._body = body; // Store body ref for adding sources later
         return bubble;
     }
@@ -458,9 +458,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function parseReferences(text) {
-        // Busca patrones como [ID: cualquier-id] y los convierte en spans interactivos
-        // El regex ahora es más permisivo para capturar cualquier ID dentro de los corchetes
-        return text.replace(/\[ID:\s*([^\]]+)\]/g, (match, id) => {
+        // Busca patrones como [ID: id] o ID: id y los convierte en badges interactivos
+        // El regex ahora es extremadamente robusto para capturar cualquier ID razonable
+        return text.replace(/(?:\[ID:\s*|ID:\s*)([0-9a-fA-F-]{4,40})(?:\s*\])?/g, (match, id) => {
             const cleanId = id.trim();
             return `<span class="recipe-ref" onclick="previewRecipe('${cleanId}')" title="Haz clic para ver detalles de la receta">📖 Ver receta</span>`;
         });
@@ -544,10 +544,12 @@ document.addEventListener('DOMContentLoaded', () => {
                             chefStatus.textContent = 'Ratatui está escribiendo...';
                         }
                         full += line + '\n';
-                        aiDiv.innerHTML = marked.parse(parseReferences(full)) + '<span class="streaming-cursor"></span>';
+                        // IMPORTANTE: parseReferences después de marked.parse
+                        aiDiv.innerHTML = parseReferences(marked.parse(full)) + '<span class="streaming-cursor"></span>';
                         
-                        // Scroll instantáneo para seguir el ritmo del streaming
-                        chatMessages.scrollTop = chatMessages.scrollHeight;
+                        // Scroll de precisión al cursor de escritura
+                        const cursor = aiDiv.querySelector('.streaming-cursor');
+                        if (cursor) cursor.scrollIntoView({ block: 'end', behavior: 'auto' });
                     }
                 }
             }
@@ -567,7 +569,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Renderizado final limpio (sin cursor)
             if (aiDiv) {
-                aiDiv.innerHTML = marked.parse(parseReferences(full));
+                aiDiv.innerHTML = parseReferences(marked.parse(full));
                 attachSources(aiDiv, pendingSources);
             } else {
                 thinkingWrap.remove();

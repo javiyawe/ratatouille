@@ -567,7 +567,7 @@ body {
     display: flex;
     flex-direction: column;
     gap: 0;
-    scroll-behavior: smooth;
+    /* scroll-behavior removido para que el scroll automático sea instantáneo y no 'luche' contra el usuario */
 }
 
 /* Welcome */
@@ -1192,6 +1192,31 @@ body {
     background: var(--accent);
     color: white;
     text-decoration: none;
+}
+
+/* Tooltip simple para el hover */
+.recipe-ref {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: linear-gradient(135deg, var(--accent) 0%, #a0522d 100%);
+    color: white !important;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    cursor: pointer;
+    margin: 0 2px;
+    box-shadow: 0 2px 4px rgba(139, 69, 19, 0.2);
+    transition: all 0.2s;
+    text-decoration: none !important;
+    vertical-align: middle;
+}
+
+.recipe-ref:hover {
+    transform: translateY(-1px) scale(1.05);
+    box-shadow: 0 4px 8px rgba(139, 69, 19, 0.3);
+    filter: brightness(1.1);
 }
 
 /* ─── Preview Panel (Side) ─── */
