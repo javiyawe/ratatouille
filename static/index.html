@@ -61,29 +61,27 @@
             </div>
         </section>
 
-        <!-- VISTA: CHAT (Pantalla Completa Rediseñada) -->
+        <!-- VISTA: CHAT -->
         <section id="viewChat" class="view-panel">
-            <div class="chat-layout-premium">
-                <!-- Sidebar de Charlas (Glassmorphism) -->
-                <aside class="chat-sidebar-premium">
-                    <div class="sidebar-premium-header">
-                        <div class="sidebar-title">Conversaciones</div>
-                        <button id="newChatBtn" class="btn-new-chat">＋</button>
+            <div class="chat-layout">
+                <!-- Sidebar de conversaciones -->
+                <aside class="chat-sidebar">
+                    <div class="chat-sidebar-header">
+                        <span class="sidebar-label">Conversaciones</span>
+                        <button id="newChatBtn" class="btn-new-chat" title="Nueva conversación">＋</button>
                     </div>
-                    <div id="chatHistoryList" class="chat-history-list-premium">
-                        <!-- JS renders chat history here -->
-                    </div>
-                    <div class="sidebar-premium-footer">
-                        <div class="chef-badge">
+                    <div id="chatHistoryList" class="chat-history-list"></div>
+                    <div class="chat-sidebar-footer">
+                        <div class="chef-online">
                             <span class="chef-status-dot"></span>
-                            Ratatui en línea
+                            Chef Ratatui en línea
                         </div>
                     </div>
                 </aside>
 
-                <!-- Área Central de Chat -->
-                <div class="chat-main-premium">
-                    <header class="chat-main-header">
+                <!-- Área principal -->
+                <div class="chat-main">
+                    <header class="chat-header">
                         <div class="chef-profile">
                             <div class="chef-avatar">🐀</div>
                             <div class="chef-info-header">
@@ -91,81 +89,30 @@
                                 <p id="chefStatus">Listo para crear magia...</p>
                             </div>
                         </div>
-                        <div class="header-tools">
-                            <button class="tool-btn" title="Modo Cocina" id="kitchenModeBtn">🍳</button>
-                            <button class="tool-btn" title="Configuración" id="chatSettingsBtn">⚙️</button>
+                        <div class="chat-header-tools">
+                            <button class="tool-btn" id="kitchenModeBtn" title="Modo sin distracciones">⛶</button>
                         </div>
                     </header>
 
-                    <div id="chatMessages" class="chat-feed-premium">
-                        <!-- Los mensajes se inyectan aquí -->
-                        <div class="welcome-container">
-                            <div class="welcome-logo">🐀</div>
-                            <h1>¡Bonjour!</h1>
-                            <p>¿Qué alquimia culinaria realizaremos hoy?</p>
-                            <div class="quick-prompts">
-                                <button onclick="setChatInput('¿Qué puedo cocinar con lo que tengo?')">📦 Mi despensa</button>
-                                <button onclick="setChatInput('Sugiéreme una cena romántica')">🕯️ Cena romántica</button>
-                                <button onclick="setChatInput('¿Cómo puedo mejorar mi risotto?')">🍚 Trucos de Risotto</button>
-                            </div>
-                        </div>
-                    </div>
+                    <div id="chatMessages" class="chat-feed"></div>
 
-                    <footer class="chat-controls-premium">
-                        <div id="magicActions" class="magic-actions-container">
-                            <!-- Chips de acción dinámicos -->
+                    <footer class="chat-footer">
+                        <div class="action-chips">
                             <button class="action-chip" onclick="handleAction('pair')">🍷 Maridaje</button>
-                            <button class="action-chip" onclick="handleAction('shopping')">🛒 Lista</button>
-                            <button class="action-chip" onclick="handleAction('scale')">⚖️ Escalar</button>
-                            <button class="action-chip" onclick="handleAction('alquimia')">✨ Alquimia</button>
+                            <button class="action-chip" onclick="handleAction('shopping')">🛒 Lista de la compra</button>
+                            <button class="action-chip" onclick="handleAction('scale')">⚖️ Escalar receta</button>
+                            <button class="action-chip" onclick="handleAction('alquimia')">✨ Variante creativa</button>
                         </div>
-                        <div class="input-container-premium">
-                            <div class="input-wrapper-inner">
-                                <button class="attach-btn">＋</button>
-                                <input type="text" id="chatInput" placeholder="Habla con el Chef...">
-                                <button id="sendChat" class="send-btn">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
-                                </button>
-                            </div>
+                        <div class="chat-input-wrap">
+                            <textarea id="chatInput" placeholder="Pregúntale algo al Chef..." rows="1"></textarea>
+                            <button id="sendChat" class="send-btn">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                                    <path d="M12 19V5M5 12l7-7 7 7"/>
+                                </svg>
+                            </button>
                         </div>
                     </footer>
                 </div>
-
-                <!-- Panel Lateral de Contexto (La "Mise en Place") -->
-                <aside class="chat-context-panel">
-                    <div class="context-header">
-                        <h3>Mise en Place</h3>
-                        <span>Contexto de la IA</span>
-                    </div>
-                    <div class="context-body">
-                        <section class="context-section">
-                            <label>Recetas Consultadas</label>
-                            <div id="sourceNodes" class="source-stack">
-                                <!-- JS renders source nodes here -->
-                                <div class="source-placeholder">Ninguna receta consultada aún.</div>
-                            </div>
-                        </section>
-                        
-                        <section class="context-section">
-                            <label>Ingredientes Clave</label>
-                            <div id="detectedIngredients" class="ingredient-bubbles">
-                                <!-- Dinámico -->
-                            </div>
-                        </section>
-
-                        <section class="context-section mini-recipe-preview" id="currentRecipePreview" style="display:none">
-                            <label>Vista Rápida</label>
-                            <div class="preview-card">
-                                <h4 id="previewTitle">Nombre</h4>
-                                <div class="preview-meta">
-                                    <span id="previewTime">0 min</span>
-                                    <span id="previewDiff">Media</span>
-                                </div>
-                                <button class="btn-focus">Entrar en Modo Cocina</button>
-                            </div>
-                        </section>
-                    </div>
-                </aside>
             </div>
         </section>
     </main>
