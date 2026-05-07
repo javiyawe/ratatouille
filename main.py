@@ -27,6 +27,13 @@ OLLAMA_URL  = "http://localhost:11434"
 EMBED_MODEL = "bge-m3:latest"
 LLM_MODEL   = "qwen2.5:7b"
 
+try:
+    with open("training_data.json", encoding="utf-8") as _f:
+        _TRAINING = json.load(_f)
+    TRAINING_PAIRS: list[dict] = _TRAINING.get("training_pairs", [])
+except FileNotFoundError:
+    TRAINING_PAIRS = []
+
 app = FastAPI(title="Ratatui API", version="2.0.0")
 
 app.add_middleware(
@@ -133,6 +140,9 @@ class MCPCallRequest(BaseModel):
 
 class UpdateChatTitleRequest(BaseModel):
     title: str
+
+class TrainingCompareRequest(BaseModel):
+    question: str
 
 # ─────────────────────────── MCP Tool Definitions ─────────────────────
 # MCP (Model Context Protocol): expone herramientas que la IA puede invocar
@@ -853,14 +863,21 @@ async def rag_query_endpoint(req: ChatRequest):
     return result
 
 # ─── Entrenamiento / Modelfile ────────────────────────────────────────
-# Genera un Ollama Modelfile para "entrenar" (personalizar) el modelo
-# con el system prompt de Ratatui — concepto de fine-tuning local.
+# Genera un Ollama Modelfile con el system prompt Y pares de entrenamiento
+# en formato MESSAGE, demostrando el concepto de fine-tuning local con
+# parejas pregunta-respuesta definidas en training_data.json.
 
 @app.get("/api/modelfile")
 async def get_modelfile():
+    message_block = "\n".join(
+        f'MESSAGE user """{p["question"]}"""\nMESSAGE assistant """{p["answer"]}"""'
+        for p in TRAINING_PAIRS
+    )
     modelfile = f"""FROM {LLM_MODEL}
 
 SYSTEM \"\"\"{SYSTEM_PROMPT}\"\"\"
+
+{message_block}
 
 PARAMETER temperature 0.4
 PARAMETER top_p 0.95
@@ -869,6 +886,7 @@ PARAMETER num_ctx 4096
     return {
         "modelfile": modelfile,
         "model_name": "ratatui-chef",
+        "training_pairs_count": len(TRAINING_PAIRS),
         "instructions": [
             "1. Copia el contenido del campo 'modelfile' en un archivo llamado 'Modelfile'",
             "2. Ejecuta: ollama create ratatui-chef -f Modelfile",
@@ -877,9 +895,74 @@ PARAMETER num_ctx 4096
         ],
     }
 
+
+@app.get("/api/training/pairs")
+async def training_pairs():
+    """Devuelve los pares de entrenamiento cargados desde training_data.json."""
+    return {
+        "total": len(TRAINING_PAIRS),
+        "pairs": TRAINING_PAIRS,
+    }
+
+
+@app.post("/api/training/compare")
+async def training_compare(req: TrainingCompareRequest):
+    """
+    Compara la respuesta del modelo base (sin contexto) vs el modelo entrenado
+    (con system prompt de Ratatui + pares de entrenamiento como ejemplos).
+    Demuestra el diferencial antes/después del entrenamiento.
+    """
+    question = req.question.strip()
+
+    # ── ANTES: modelo base sin ningún contexto ────────────────────────
+    base_msg = await llm(
+        [{"role": "user", "content": question}],
+        temperature=0.7,
+    )
+    base_response = base_msg.get("content", "")
+
+    # ── DESPUÉS: modelo con system prompt + ejemplos de entrenamiento ─
+    training_context = "\n\n".join(
+        f'Usuario: {p["question"]}\nRatatui: {p["answer"]}'
+        for p in TRAINING_PAIRS[:5]
+    )
+    trained_msg = await llm(
+        [
+            {
+                "role": "system",
+                "content": (
+                    f"{SYSTEM_PROMPT}\n\n"
+                    "## EJEMPLOS DE ENTRENAMIENTO\n"
+                    "A continuación tienes ejemplos de cómo debes responder:\n\n"
+                    f"{training_context}"
+                ),
+            },
+            {"role": "user", "content": question},
+        ],
+        temperature=0.4,
+    )
+    trained_response = trained_msg.get("content", "")
+
+    return {
+        "question": question,
+        "before": {
+            "label": f"Modelo base ({LLM_MODEL}) — sin entrenamiento",
+            "response": base_response,
+        },
+        "after": {
+            "label": f"Modelo entrenado (ratatui-chef) — con {len(TRAINING_PAIRS)} pares",
+            "response": trained_response,
+        },
+    }
+
+
 # ─── Static Files ─────────────────────────────────────────────────────
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+@app.get("/css3d")
+async def css3d_page():
+    return FileResponse("static/css3d.html")
 
 @app.get("/{full_path:path}")
 async def catch_all(_full_path: str = ""):

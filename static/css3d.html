@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ratatui — Universo Culinario 3D</title>
+<style>
+/* ── Reset & Base ──────────────────────────────────────────────── */
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+    --accent:   #c0392b;
+    --gold:     #f39c12;
+    --bg:       #0a0810;
+    --card-w:   220px;
+    --card-h:   300px;
+    --radius:   380px;     /* translateZ del carrusel */
+    --serif:    'Georgia', serif;
+    --sans:     system-ui, sans-serif;
+}
+
+body {
+    background: var(--bg);
+    color: #f0e8d8;
+    font-family: var(--sans);
+    height: 100vh;
+    overflow: hidden;
+    user-select: none;
+}
+
+/* ── Campo de estrellas ───────────────────────────────────────── */
+#stars {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+}
+
+/* ── HUD / Header ─────────────────────────────────────────────── */
+.hud {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 100;
+    padding: 1.2rem 2rem 0.8rem;
+    background: linear-gradient(to bottom, rgba(10,8,16,0.95) 70%, transparent);
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+}
+
+.title {
+    font-family: var(--serif);
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: #f0e8d8;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+    text-shadow: 0 0 20px rgba(192,57,43,0.6);
+    animation: floatTitle 5s ease-in-out infinite;
+}
+
+@keyframes floatTitle {
+    0%,100% { transform: translateY(0) rotateX(0deg); }
+    50%      { transform: translateY(-4px) rotateX(3deg); }
+}
+
+.title span { color: var(--accent); }
+
+.search-dock {
+    display: flex;
+    gap: 0.5rem;
+    flex: 1;
+    max-width: 460px;
+}
+
+.search-dock input {
+    flex: 1;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.15);
+    color: #f0e8d8;
+    padding: 0.55rem 1rem;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    outline: none;
+    transition: border-color 0.2s, background 0.2s;
+}
+.search-dock input:focus {
+    border-color: var(--accent);
+    background: rgba(255,255,255,0.12);
+}
+.search-dock input::placeholder { color: rgba(240,232,216,0.4); }
+
+.search-dock button {
+    background: var(--accent);
+    color: white;
+    border: none;
+    padding: 0.55rem 1.2rem;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 700;
+    font-size: 0.85rem;
+    transition: opacity 0.2s, transform 0.15s;
+}
+.search-dock button:hover  { opacity: 0.85; transform: translateY(-1px); }
+.search-dock button:active { transform: translateY(0); }
+
+.hud-right {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+    margin-left: auto;
+}
+
+.back-link {
+    color: rgba(240,232,216,0.5);
+    text-decoration: none;
+    font-size: 0.8rem;
+    letter-spacing: 0.5px;
+    transition: color 0.2s;
+}
+.back-link:hover { color: var(--gold); }
+
+/* ── Escena 3D ────────────────────────────────────────────────── */
+.scene-wrap {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+    perspective: 1100px;
+    perspective-origin: 50% 46%;
+}
+
+.carousel {
+    width: var(--card-w);
+    height: var(--card-h);
+    position: relative;
+    transform-style: preserve-3d;
+    transition: transform 0.7s cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+/* ── Tarjeta individual ───────────────────────────────────────── */
+.card {
+    position: absolute;
+    width: var(--card-w);
+    height: var(--card-h);
+    transform-style: preserve-3d;
+    cursor: pointer;
+    transition: transform 0.6s cubic-bezier(0.23, 1, 0.32, 1);
+    top: 0; left: 0;
+}
+
+/* Face base */
+.card-face {
+    position: absolute;
+    inset: 0;
+    border-radius: 16px;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+    padding: 1.4rem 1.2rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+    overflow: hidden;
+}
+
+/* FRONT */
+.card-front {
+    background: linear-gradient(145deg, #1e1828 0%, #16121e 100%);
+    border: 1px solid rgba(255,255,255,0.08);
+    box-shadow:
+        0 30px 60px rgba(0,0,0,0.6),
+        inset 0 1px 0 rgba(255,255,255,0.06);
+}
+
+.card-front::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    border-radius: 16px 16px 0 0;
+    background: var(--accent);
+}
+
+.card-cuisine-badge {
+    font-size: 0.65rem;
+    font-weight: 800;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--gold);
+    opacity: 0.8;
+}
+
+.card-emoji {
+    font-size: 2.6rem;
+    line-height: 1;
+    filter: drop-shadow(0 4px 8px rgba(0,0,0,0.5));
+    animation: cardFloat 4s ease-in-out infinite;
+}
+
+@keyframes cardFloat {
+    0%,100% { transform: translateY(0) rotateX(0deg) rotateZ(0deg); }
+    33%      { transform: translateY(-5px) rotateX(6deg) rotateZ(1.5deg); }
+    66%      { transform: translateY(-2px) rotateX(-3deg) rotateZ(-1deg); }
+}
+
+.card-title {
+    font-family: var(--serif);
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #f0e8d8;
+    line-height: 1.25;
+    flex: 1;
+}
+
+.card-meta {
+    display: flex;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+}
+
+.badge {
+    font-size: 0.65rem;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 20px;
+    letter-spacing: 0.3px;
+}
+.badge-time       { background: rgba(243,156,18,0.15); color: var(--gold); border: 1px solid rgba(243,156,18,0.3); }
+.badge-difficulty { background: rgba(192,57,43,0.15);  color: #e74c3c;    border: 1px solid rgba(192,57,43,0.3); }
+
+.card-hint {
+    font-size: 0.62rem;
+    color: rgba(240,232,216,0.3);
+    letter-spacing: 0.3px;
+    text-align: center;
+    margin-top: auto;
+}
+
+/* BACK */
+.card-back {
+    background: linear-gradient(145deg, #261a14 0%, #1a1008 100%);
+    border: 1px solid rgba(192,57,43,0.25);
+    transform: rotateY(180deg);
+    box-shadow:
+        0 30px 60px rgba(0,0,0,0.6),
+        inset 0 1px 0 rgba(255,255,255,0.04);
+}
+
+.card-back::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    border-radius: 16px 16px 0 0;
+    background: var(--gold);
+}
+
+.back-label {
+    font-size: 0.62rem;
+    font-weight: 800;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--gold);
+    opacity: 0.7;
+}
+
+.back-title {
+    font-family: var(--serif);
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #f0e8d8;
+    line-height: 1.2;
+    margin-bottom: 0.3rem;
+}
+
+.ingredients-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    flex: 1;
+}
+
+.ingredients-list li {
+    font-size: 0.78rem;
+    color: rgba(240,232,216,0.75);
+    display: flex;
+    align-items: baseline;
+    gap: 0.4rem;
+}
+
+.ingredients-list li::before {
+    content: '·';
+    color: var(--accent);
+    font-size: 1.1rem;
+    line-height: 0;
+    flex-shrink: 0;
+}
+
+.back-footer {
+    font-size: 0.65rem;
+    color: rgba(240,232,216,0.3);
+    text-align: center;
+    border-top: 1px solid rgba(255,255,255,0.06);
+    padding-top: 0.5rem;
+    letter-spacing: 0.3px;
+}
+
+/* Flip activado */
+.card.flipped {
+    transform: rotateY(180deg) !important;
+}
+
+/* ── Controles del carrusel ───────────────────────────────────── */
+.controls {
+    position: fixed;
+    bottom: 2rem;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    gap: 1.2rem;
+    background: rgba(10,8,16,0.85);
+    padding: 0.7rem 1.5rem;
+    border-radius: 40px;
+    border: 1px solid rgba(255,255,255,0.08);
+    backdrop-filter: blur(10px);
+}
+
+.ctrl-btn {
+    background: rgba(255,255,255,0.07);
+    border: 1px solid rgba(255,255,255,0.1);
+    color: #f0e8d8;
+    width: 38px; height: 38px;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 1rem;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.2s, transform 0.15s;
+}
+.ctrl-btn:hover  { background: rgba(192,57,43,0.3); transform: scale(1.1); }
+.ctrl-btn:active { transform: scale(0.95); }
+
+.counter {
+    font-size: 0.8rem;
+    color: rgba(240,232,216,0.5);
+    min-width: 60px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+
+.ctrl-hint {
+    font-size: 0.7rem;
+    color: rgba(240,232,216,0.3);
+    letter-spacing: 0.3px;
+}
+
+/* ── Estado vacío / cargando ──────────────────────────────────── */
+.empty-state {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    z-index: 5;
+    pointer-events: none;
+}
+
+.spinner-3d {
+    width: 60px; height: 60px;
+    position: relative;
+    transform-style: preserve-3d;
+    animation: spin3d 1.8s linear infinite;
+}
+
+@keyframes spin3d {
+    0%   { transform: rotateY(0deg)   rotateX(0deg); }
+    50%  { transform: rotateY(180deg) rotateX(30deg); }
+    100% { transform: rotateY(360deg) rotateX(0deg); }
+}
+
+.spinner-face {
+    position: absolute;
+    inset: 0;
+    border: 2px solid var(--accent);
+    border-radius: 8px;
+    opacity: 0.6;
+}
+.spinner-face:nth-child(2) {
+    transform: rotateY(90deg);
+    border-color: var(--gold);
+    opacity: 0.4;
+}
+
+.empty-msg {
+    font-size: 0.9rem;
+    color: rgba(240,232,216,0.4);
+    letter-spacing: 0.3px;
+}
+
+/* ── Toast de estado ──────────────────────────────────────────── */
+.toast {
+    position: fixed;
+    top: 90px;
+    right: 2rem;
+    background: rgba(30,24,40,0.95);
+    border: 1px solid rgba(255,255,255,0.1);
+    color: #f0e8d8;
+    padding: 0.7rem 1.2rem;
+    border-radius: 10px;
+    font-size: 0.82rem;
+    z-index: 200;
+    backdrop-filter: blur(10px);
+    opacity: 0;
+    transform: translateX(20px);
+    transition: opacity 0.3s, transform 0.3s;
+    pointer-events: none;
+}
+.toast.show { opacity: 1; transform: translateX(0); }
+</style>
+</head>
+<body>
+
+<!-- Campo de estrellas (generado por JS) -->
+<canvas id="stars"></canvas>
+
+<!-- HUD -->
+<header class="hud">
+    <h1 class="title">🐀 <span>Ratatui</span> Universe</h1>
+    <div class="search-dock">
+        <input id="qInput" type="text" placeholder="Busca una receta… (ej: pasta, pollo, vegano)">
+        <button id="qBtn">Explorar RAG</button>
+    </div>
+    <div class="hud-right">
+        <a class="back-link" href="/">← Volver al recetario</a>
+    </div>
+</header>
+
+<!-- Escena 3D -->
+<div class="scene-wrap">
+    <div class="carousel" id="carousel"></div>
+</div>
+
+<!-- Estado vacío / cargando -->
+<div class="empty-state" id="emptyState">
+    <div class="spinner-3d">
+        <div class="spinner-face"></div>
+        <div class="spinner-face"></div>
+    </div>
+    <p class="empty-msg" id="emptyMsg">Cargando recetario…</p>
+</div>
+
+<!-- Controles -->
+<div class="controls" id="controls" style="display:none">
+    <button class="ctrl-btn" id="prevBtn" title="Anterior">&#8592;</button>
+    <span class="counter" id="counter">— / —</span>
+    <button class="ctrl-btn" id="nextBtn" title="Siguiente">&#8594;</button>
+    <span class="ctrl-hint">· Clic para voltear</span>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+/* ── Stars background ─────────────────────────────────────────── */
+(function () {
+    const canvas = document.getElementById('stars');
+    const ctx    = canvas.getContext('2d');
+    let W, H, stars = [];
+
+    function resize() {
+        W = canvas.width  = window.innerWidth;
+        H = canvas.height = window.innerHeight;
+    }
+
+    function mkStars(n) {
+        stars = Array.from({ length: n }, () => ({
+            x:  Math.random() * W,
+            y:  Math.random() * H,
+            r:  Math.random() * 1.4 + 0.2,
+            a:  Math.random(),
+            da: (Math.random() - 0.5) * 0.004,
+        }));
+    }
+
+    function draw() {
+        ctx.clearRect(0, 0, W, H);
+        stars.forEach(s => {
+            s.a = Math.max(0.05, Math.min(1, s.a + s.da));
+            if (s.a <= 0.05 || s.a >= 1) s.da *= -1;
+            ctx.beginPath();
+            ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(240,232,216,${s.a})`;
+            ctx.fill();
+        });
+        requestAnimationFrame(draw);
+    }
+
+    resize();
+    mkStars(160);
+    draw();
+    window.addEventListener('resize', () => { resize(); mkStars(160); });
+})();
+
+/* ── Toast helper ─────────────────────────────────────────────── */
+function toast(msg, ms = 2800) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(el._t);
+    el._t = setTimeout(() => el.classList.remove('show'), ms);
+}
+
+/* ── Cuisine → emoji map ──────────────────────────────────────── */
+const EMOJI_MAP = {
+    española:   '🥘', italiana:  '🍝', japonesa: '🍣',
+    mexicana:   '🌮', francesa:  '🥐', china:    '🥟',
+    americana:  '🍔', griega:    '🫒', india:    '🍛',
+    tailandesa: '🍜', árabe:     '🧆', peruana:  '🥩',
+    default:    '🍽️',
+};
+
+function cuisineEmoji(type) {
+    if (!type) return EMOJI_MAP.default;
+    const k = type.toLowerCase().trim();
+    return EMOJI_MAP[k] || EMOJI_MAP.default;
+}
+
+/* ── Build recipe card DOM ────────────────────────────────────── */
+function buildCard(recipe, angle, total) {
+    const tz   = Math.max(220, Math.round(total <= 4 ? 200 : total <= 7 ? 300 : total <= 10 ? 360 : 420));
+    const card  = document.createElement('div');
+    card.className = 'card';
+    card.style.transform = `rotateY(${angle}deg) translateZ(${tz}px)`;
+
+    const ingrs  = (recipe.ingredientes || []).slice(0, 6);
+    const mins   = recipe.tiempos?.total_minutos || 0;
+    const timeStr = mins ? `⏱ ${mins} min` : '';
+    const diff   = recipe.dificultad || '';
+
+    card.innerHTML = `
+      <div class="card-face card-front">
+        <div class="card-cuisine-badge">${recipe.tipo_cocina || 'Cocina'}</div>
+        <div class="card-emoji">${cuisineEmoji(recipe.tipo_cocina)}</div>
+        <div class="card-title">${recipe.titulo || 'Sin título'}</div>
+        <div class="card-meta">
+          ${timeStr ? `<span class="badge badge-time">${timeStr}</span>` : ''}
+          ${diff    ? `<span class="badge badge-difficulty">${diff}</span>` : ''}
+        </div>
+        <div class="card-hint">toca para ver ingredientes</div>
+      </div>
+      <div class="card-face card-back">
+        <div class="back-label">Ingredientes principales</div>
+        <div class="back-title">${recipe.titulo || 'Sin título'}</div>
+        <ul class="ingredients-list">
+          ${ingrs.map(i => `<li>${i.cantidad ? i.cantidad + ' ' + (i.unidad || '') + ' ' : ''}${i.nombre || ''}</li>`).join('')}
+          ${ingrs.length === 0 ? '<li>Sin ingredientes registrados</li>' : ''}
+        </ul>
+        <div class="back-footer">${recipe.descripcion ? recipe.descripcion.slice(0, 80) + (recipe.descripcion.length > 80 ? '…' : '') : ''}</div>
+      </div>`;
+
+    card.addEventListener('click', () => {
+        card.classList.toggle('flipped');
+    });
+
+    return card;
+}
+
+/* ── Carousel state ───────────────────────────────────────────── */
+let recipes   = [];
+let curIndex  = 0;
+let carAngle  = 0;
+
+const carousel = document.getElementById('carousel');
+const counter  = document.getElementById('counter');
+const controls = document.getElementById('controls');
+const empty    = document.getElementById('emptyState');
+const emptyMsg = document.getElementById('emptyMsg');
+
+function renderCarousel() {
+    carousel.innerHTML = '';
+    const n    = recipes.length;
+    const step = 360 / n;
+
+    recipes.forEach((r, i) => {
+        const angle = step * i;
+        const card  = buildCard(r, angle, n);
+        carousel.appendChild(card);
+    });
+
+    controls.style.display = n ? 'flex' : 'none';
+    empty.style.display    = n ? 'none' : 'flex';
+    updateCarousel();
+}
+
+function updateCarousel() {
+    const n   = recipes.length;
+    if (!n) return;
+    const step = 360 / n;
+    carAngle   = -(curIndex * step);
+    carousel.style.transform = `rotateY(${carAngle}deg)`;
+    counter.textContent      = `${curIndex + 1} / ${n}`;
+}
+
+document.getElementById('prevBtn').addEventListener('click', () => {
+    curIndex = (curIndex - 1 + recipes.length) % recipes.length;
+    updateCarousel();
+});
+document.getElementById('nextBtn').addEventListener('click', () => {
+    curIndex = (curIndex + 1) % recipes.length;
+    updateCarousel();
+});
+
+document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowLeft')  { curIndex = (curIndex - 1 + recipes.length) % recipes.length; updateCarousel(); }
+    if (e.key === 'ArrowRight') { curIndex = (curIndex + 1) % recipes.length; updateCarousel(); }
+});
+
+/* ── Parallax suave con el ratón ──────────────────────────────── */
+document.addEventListener('mousemove', e => {
+    const dx = (e.clientX / window.innerWidth  - 0.5) * 6;
+    const dy = (e.clientY / window.innerHeight - 0.5) * 4;
+    document.querySelector('.scene-wrap').style.perspectiveOrigin =
+        `${50 + dx}% ${46 + dy}%`;
+});
+
+/* ── API calls ────────────────────────────────────────────────── */
+async function loadAll() {
+    emptyMsg.textContent = 'Cargando recetario desde ChromaDB…';
+    empty.style.display  = 'flex';
+    try {
+        const r = await fetch('/api/recipes?limit=20');
+        const d = await r.json();
+        recipes  = (d.recipes || []).slice(0, 16);
+        curIndex = 0;
+        renderCarousel();
+        if (recipes.length) toast(`${recipes.length} recetas cargadas desde el recetario`);
+    } catch (err) {
+        emptyMsg.textContent = 'Error conectando con el servidor.';
+        console.error(err);
+    }
+}
+
+async function searchRecipes() {
+    const q = document.getElementById('qInput').value.trim();
+    if (!q) { loadAll(); return; }
+
+    emptyMsg.textContent = `Consultando RAG: «${q}»…`;
+    empty.style.display  = 'flex';
+    controls.style.display = 'none';
+
+    try {
+        const r = await fetch('/api/search', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query: q, n_results: 12 }),
+        });
+        const d = await r.json();
+        recipes  = (d.recipes || []).slice(0, 12);
+        curIndex = 0;
+        renderCarousel();
+        if (recipes.length) {
+            toast(`RAG encontró ${recipes.length} receta${recipes.length > 1 ? 's' : ''} para «${q}»`);
+        } else {
+            emptyMsg.textContent = `Sin resultados para «${q}». Prueba otro término.`;
+        }
+    } catch (err) {
+        emptyMsg.textContent = 'Error en la búsqueda RAG.';
+        console.error(err);
+    }
+}
+
+document.getElementById('qBtn').addEventListener('click', searchRecipes);
+document.getElementById('qInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') searchRecipes();
+});
+
+/* ── Arranque ─────────────────────────────────────────────────── */
+loadAll();
+</script>
+</body>
+</html>
