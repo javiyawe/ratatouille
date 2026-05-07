@@ -6,7 +6,14 @@
       "Bash(curl -s http://localhost:8000/api/recipes?limit=200)",
       "Bash(python3 -c \"import json,sys; r=json.load\\(sys.stdin\\); [print\\(x['titulo']\\) for x in r['recipes']]\")",
       "Bash(python3 -c ' *)",
-      "Bash(.venv/bin/python seed_europe.py)"
+      "Bash(.venv/bin/python seed_europe.py)",
+      "Bash(.venv/bin/python expand_steps.py)",
+      "Bash(echo \"PID: $!\")",
+      "Bash(kill 20705)",
+      "Bash(echo \"PID: $! — log en /tmp/expand_log.txt\")",
+      "Bash(kill 20878)",
+      "Bash(.venv/bin/python -u expand_steps.py)",
+      "Bash(tee /tmp/expand_log.txt)"
     ]
   }
 }
