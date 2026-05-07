@@ -33,6 +33,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentChatId = localStorage.getItem('last_chat_id');
 
     let isSearchMode = false;
+    let autoScroll   = true;   // sigue el scroll automáticamente salvo que el usuario suba
 
     // Muestra cantidad + unidad sin duplicar si la unidad ya va en la cantidad
     function fmtQty(ing) {
@@ -54,14 +55,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Navigation & Routing ---
 
+    // navigate: para enlaces que el usuario inicia (añade entrada al historial)
     function navigate(path, state = {}) {
+        if (window.location.pathname === path) return; // evitar duplicados
         history.pushState(state, '', path);
         handleRouting();
     }
 
+    // redirect: para normalización interna (sustituye la entrada actual, sin historial extra)
+    function redirect(path) {
+        history.replaceState({}, '', path);
+    }
+
     async function handleRouting() {
         const path = window.location.pathname;
-        
+
         if (path.startsWith('/chat')) {
             switchView('chat', false);
             const chatId = path.split('/')[2];
@@ -70,14 +78,25 @@ document.addEventListener('DOMContentLoaded', () => {
                 localStorage.setItem('last_chat_id', chatId);
                 await switchChat(chatId, true, false);
             } else {
-                // Si estamos en /chat sin ID, intentar cargar el último o crear uno
+                // /chat sin ID → ir al último chat o mostrar bienvenida
                 if (currentChatId) {
-                    navigate(`/chat/${currentChatId}`);
+                    // replaceState para no añadir entrada de historial innecesaria
+                    redirect(`/chat/${currentChatId}`);
+                    await switchChat(currentChatId, true, false);
+                } else {
+                    chatMessages.innerHTML = '';
+                    renderWelcome();
                 }
             }
         } else {
-            // Default: /libro
+            // Cualquier otra ruta (/libro, /, /book, …) → vista de recetario
             switchView('libro', false);
+
+            // Normalizar la URL canónica si no es ya /libro o /libro/recipe/…
+            if (!path.startsWith('/libro')) {
+                redirect('/libro');
+            }
+
             const recipeId = path.split('/recipe/')[1];
             if (recipeId) {
                 currentSelectedId = recipeId;
@@ -86,7 +105,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    window.onpopstate = handleRouting;
+    window.onpopstate = () => handleRouting();
 
     function switchView(view, updateUrl = true) {
         if (view === 'libro') {
@@ -94,7 +113,7 @@ document.addEventListener('DOMContentLoaded', () => {
             viewChat.classList.remove('active');
             viewLibroBtn.classList.add('active');
             viewChatBtn.classList.remove('active');
-            previewPanel.classList.remove('active'); // Cerrar previsualización al salir del chat
+            previewPanel.classList.remove('active');
             if (updateUrl) {
                 const url = currentSelectedId ? `/libro/recipe/${currentSelectedId}` : '/libro';
                 navigate(url);
@@ -209,9 +228,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 <header class="detail-header">
                     <h1>${r.titulo}</h1>
                     <div class="header-actions">
-                        <button class="edit-btn" onclick="openEditModal('${id}')">✏️ Editar</button>
-                        <button class="delete-recipe-btn" onclick="deleteRecipe('${id}')">🗑️</button>
-                        <button class="fav-star ${isFav(id)?'active':''}" onclick="toggleFav('${id}', this)">★</button>
+                        <button class="recipe-action-btn" onclick="openEditModal('${id}')" title="Editar receta">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                        </button>
+                        <button class="recipe-action-btn danger" onclick="deleteRecipe('${id}')" title="Eliminar receta">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                        </button>
+                        <button class="recipe-action-btn fav-btn ${isFav(id)?'active':''}" onclick="toggleFav('${id}', this)" title="Favorito">★</button>
                     </div>
                 </header>
                 
@@ -332,8 +355,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const res = await fetch('/api/chats');
             const data = await res.json();
             renderChatHistory(data.chats);
-            if (currentChatId) switchChat(currentChatId, false);
         } catch(e) { console.error('Error loading chats', e); }
+    }
+
+    function esc(str) {
+        return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     }
 
     function renderChatHistory(chats) {
@@ -342,15 +368,62 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         chatHistoryList.innerHTML = chats.map(c => `
-            <div class="chat-history-item ${currentChatId === c.id ? 'active' : ''}" onclick="switchChat('${c.id}')">
+            <div class="chat-history-item ${currentChatId === c.id ? 'active' : ''}"
+                 data-chat-id="${c.id}"
+                 onclick="switchChat('${c.id}')">
                 <div class="chat-item-row">
-                    <span class="chat-item-title">${c.title}</span>
-                    <button class="chat-delete-btn" onclick="event.stopPropagation(); deleteChat('${c.id}')">×</button>
+                    <span class="chat-item-title">${esc(c.title)}</span>
+                    <div class="chat-item-btns">
+                        <button class="chat-rename-btn" title="Renombrar"
+                                onclick="event.stopPropagation(); startRenameChat('${c.id}')">✎</button>
+                        <button class="chat-delete-btn"
+                                onclick="event.stopPropagation(); deleteChat('${c.id}')">×</button>
+                    </div>
                 </div>
                 <div class="chat-item-date">${new Date(c.updated_at * 1000).toLocaleDateString('es-ES', {day:'2-digit', month:'short'})}</div>
             </div>
         `).join('');
     }
+
+    window.startRenameChat = (id) => {
+        const item = chatHistoryList.querySelector(`[data-chat-id="${id}"]`);
+        if (!item) return;
+        const titleSpan = item.querySelector('.chat-item-title');
+        if (!titleSpan || titleSpan.classList.contains('editing')) return;
+
+        const currentTitle = titleSpan.textContent.trim();
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'chat-rename-input';
+        input.value = currentTitle;
+        input.maxLength = 120;
+        titleSpan.classList.add('editing');
+        titleSpan.replaceWith(input);
+        input.focus();
+        input.select();
+
+        let done = false;
+        const save = async () => {
+            if (done) return;
+            done = true;
+            const newTitle = input.value.trim() || currentTitle;
+            try {
+                await fetch(`/api/chats/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ title: newTitle }),
+                });
+            } catch(e) { console.error(e); }
+            loadChatHistory();
+        };
+        const cancel = () => { if (done) return; done = true; loadChatHistory(); };
+
+        input.addEventListener('keydown', e => {
+            if (e.key === 'Enter')  { e.preventDefault(); save(); }
+            if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+        });
+        input.addEventListener('blur', save);
+    };
 
     window.deleteChat = async (id) => {
         if (!confirm('¿Borrar esta conversación?')) return;
@@ -365,6 +438,40 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch(e) { console.error(e); }
     };
 
+    // polling activo para respuestas pendientes: chatId → intervalId
+    const _pendingPolls = {};
+
+    function _stopPoll(chatId) {
+        if (_pendingPolls[chatId]) {
+            clearInterval(_pendingPolls[chatId]);
+            delete _pendingPolls[chatId];
+        }
+    }
+
+    function _startPoll(chatId, thinkingEl) {
+        _stopPoll(chatId);
+        let attempts = 0;
+        _pendingPolls[chatId] = setInterval(async () => {
+            attempts++;
+            if (attempts > 90) { _stopPoll(chatId); thinkingEl?.remove(); return; } // 3 min max
+            try {
+                const res  = await fetch(`/api/chats/${chatId}`);
+                const data = await res.json();
+                const last = data.history?.[data.history.length - 1];
+                if (last?.role === 'assistant') {
+                    _stopPoll(chatId);
+                    thinkingEl?.remove();
+                    const bubble = addAiMsg('');
+                    bubble.innerHTML = marked.parse(parseReferences(last.content, last.sources || []));
+                    if (last.sources?.length) attachSources(bubble, last.sources);
+                    scrollBottom(true);
+                    loadChatHistory();
+                    chefStatus.textContent = 'Listo para más magia';
+                }
+            } catch(_) { _stopPoll(chatId); thinkingEl?.remove(); }
+        }, 2000);
+    }
+
     window.switchChat = async (id, shouldLoad = true, updateUrl = true) => {
         if (updateUrl) { navigate(`/chat/${id}`); return; }
         currentChatId = id;
@@ -374,9 +481,12 @@ document.addEventListener('DOMContentLoaded', () => {
         );
         if (!shouldLoad) return;
 
+        // Parar cualquier poll anterior de otro chat
+        Object.keys(_pendingPolls).forEach(cid => { if (cid !== id) _stopPoll(cid); });
+
         chatMessages.innerHTML = '<div style="padding:4rem; text-align:center; color:#bbb; font-family:var(--serif); font-style:italic;">Preparando la mesa...</div>';
         try {
-            const res = await fetch(`/api/chats/${id}`);
+            const res  = await fetch(`/api/chats/${id}`);
             const data = await res.json();
             chatMessages.innerHTML = '';
             if (!data.history?.length) {
@@ -387,9 +497,19 @@ document.addEventListener('DOMContentLoaded', () => {
                         addUserMsg(m.content);
                     } else if (m.role === 'assistant') {
                         const bubble = addAiMsg('');
-                        bubble.innerHTML = marked.parse(parseReferences(m.content));
+                        bubble.innerHTML = marked.parse(parseReferences(m.content, m.sources || []));
+                        if (m.sources?.length) attachSources(bubble, m.sources);
                     }
                 });
+
+                // Si el último mensaje es del usuario, el chef aún está procesando
+                const last = data.history[data.history.length - 1];
+                if (last?.role === 'user') {
+                    const thinkingEl = addThinkingWrap();
+                    setThinkingLabel(thinkingEl, 'Preparando respuesta…');
+                    chefStatus.textContent = 'Ratatui está cocinando';
+                    _startPoll(id, thinkingEl);
+                }
             }
             chatMessages.scrollTop = chatMessages.scrollHeight;
         } catch(e) {
@@ -453,6 +573,19 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch(e) { console.error(e); }
     };
 
+    // ── Scroll ───────────────────────────────────────────────────────────
+
+    // Detecta si el usuario sube manualmente → desactiva auto-scroll
+    chatMessages.addEventListener('scroll', () => {
+        const dist = chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight;
+        autoScroll = dist < 80;
+    }, { passive: true });
+
+    function scrollBottom(force = false) {
+        if (!autoScroll && !force) return;
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
     // ── Funciones de construcción de mensajes ───────────────────────────
 
     function createMsgWrap(role) {
@@ -473,31 +606,23 @@ document.addEventListener('DOMContentLoaded', () => {
         wrap.appendChild(avatar);
         wrap.appendChild(body);
         chatMessages.appendChild(wrap);
-        
-        // Solo auto-scroll si estamos cerca del final
-        scrollToBottomIfNear();
-        
+        scrollBottom();
         return { wrap, body, bubble };
     }
 
-    function scrollToBottomIfNear() {
-        const threshold = 150;
-        const isNearBottom = chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight < threshold;
-        if (isNearBottom) {
-            chatMessages.scrollTo({ top: chatMessages.scrollHeight, behavior: 'smooth' });
-        }
-    }
-
     function addUserMsg(content) {
+        autoScroll = true;          // al enviar, siempre seguimos
         const { bubble } = createMsgWrap('user');
         bubble.textContent = content;
+        scrollBottom(true);
         return bubble;
     }
 
-    function addAiMsg(content) {
+    function addAiMsg(content, sources = []) {
+        autoScroll = true;          // nueva respuesta → retomamos seguimiento
         const { body, bubble } = createMsgWrap('ai');
-        if (content) bubble.innerHTML = marked.parse(parseReferences(content));
-        bubble._body = body; // Store body ref for adding sources later
+        if (content) bubble.innerHTML = marked.parse(parseReferences(content, sources));
+        bubble._body = body;
         return bubble;
     }
 
@@ -515,7 +640,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
             </div>`;
         chatMessages.appendChild(wrap);
-        scrollToBottomIfNear();
+        scrollBottom();
         return wrap;
     }
 
@@ -529,26 +654,43 @@ document.addEventListener('DOMContentLoaded', () => {
         const body = bubble._body || bubble.parentElement;
         const div = document.createElement('div');
         div.className = 'msg-sources';
-        div.innerHTML = sources.map(s =>
-            `<button class="source-pill" onclick="previewRecipe('${s.id}')">📖 ${s.titulo}</button>`
-        ).join('');
+        div.innerHTML = sources.map(s => {
+            const label = s.num != null ? `[${s.num}] ${s.titulo}` : s.titulo;
+            return `<button class="source-pill" onclick="previewRecipe('${s.id}')">📖 ${label}</button>`;
+        }).join('');
         body.appendChild(div);
     }
 
-    function parseReferences(text) {
-        // Regex para capturar el nombre antes del ID: "Nombre de Receta [ID: uuid]"
-        const idRegex = /([^#*\[\n\r]+)?\s*\[[iI][dD]:\s*([0-9a-fA-F-]{8,36})\]/g;
-        
-        return text.replace(idRegex, (_match, name, id) => {
-            const cleanId = id.trim();
-            const displayName = name ? name.trim() : "Ver Receta";
-            
-            // Usamos data-id para delegación de eventos (más seguro que onclick)
-            return `<span class="recipe-ref" data-recipe-id="${cleanId}" 
-                          title="Ver detalles de: ${displayName}">
-                        <span class="ref-icon">📖</span> ${displayName}
-                    </span>`;
-        });
+    /**
+     * Convierte referencias del LLM en spans clicables.
+     * Soporta dos formatos:
+     *   [1], [2]  — nuevo formato numerado (sources array requerido)
+     *   [ID: uuid] — formato legacy para mensajes antiguos
+     */
+    function parseReferences(text, sources = []) {
+        // Mapa num → source
+        const numMap = {};
+        (sources || []).forEach(s => { if (s.num != null) numMap[s.num] = s; });
+
+        // Formato nuevo: [1], [2] …
+        if (Object.keys(numMap).length) {
+            text = text.replace(/\[(\d+)\]/g, (match, n) => {
+                const s = numMap[parseInt(n)];
+                if (!s) return match;
+                return `<sup class="recipe-ref recipe-ref-num" data-recipe-id="${s.id}" title="${s.titulo}">[${n}]</sup>`;
+            });
+        }
+
+        // Formato legacy: Nombre [ID: uuid]
+        text = text.replace(/([^#*\[\n\r]+)?\s*\[[iI][dD]:\s*([0-9a-fA-F-]{8,36})\]/g,
+            (_m, name, id) => {
+                const cleanId     = id.trim();
+                const displayName = (name || '').trim() || 'Ver Receta';
+                return `<span class="recipe-ref" data-recipe-id="${cleanId}" title="${displayName}"><span class="ref-icon">📖</span> ${displayName}</span>`;
+            }
+        );
+
+        return text;
     }
 
     // Delegación de eventos para las referencias del chat
@@ -567,6 +709,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!text) return;
 
         if (chatMessages.querySelector('.welcome-container')) chatMessages.innerHTML = '';
+
+        // Si había un poll activo para este chat, pararlo (el SSE lo sustituye)
+        if (currentChatId) _stopPoll(currentChatId);
 
         addUserMsg(text);
         chatInput.value = '';
@@ -638,21 +783,15 @@ document.addEventListener('DOMContentLoaded', () => {
                                     firstContent = false;
                                     chefStatus.textContent = 'Ratatui está escribiendo';
                                 }
-                                // Acumula el valor exacto del token (sin añadir \n espurios)
                                 full += event.value;
-                                aiDiv.innerHTML = marked.parse(parseReferences(full)) + '<span class="streaming-cursor"></span>';
-
-                                const isNearBottom = chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight < 100;
-                                if (isNearBottom) {
-                                    const cursor = aiDiv.querySelector('.streaming-cursor');
-                                    if (cursor) cursor.scrollIntoView({ block: 'end', behavior: 'auto' });
-                                }
+                                aiDiv.innerHTML = marked.parse(parseReferences(full, pendingSources))
+                                               + '<span class="streaming-cursor"></span>';
+                                scrollBottom();   // solo sigue si autoScroll está activo
                                 break;
                             }
                             case 'done': {
-                                // Renderizado final limpio (sin cursor)
                                 if (aiDiv) {
-                                    aiDiv.innerHTML = marked.parse(parseReferences(full));
+                                    aiDiv.innerHTML = marked.parse(parseReferences(full, pendingSources));
                                     attachSources(aiDiv, pendingSources);
                                 }
                                 chefStatus.textContent = 'Listo para más magia';
@@ -669,7 +808,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Asegurar renderizado final si el stream terminó sin evento 'done'
             if (aiDiv && aiDiv.innerHTML.includes('streaming-cursor')) {
-                aiDiv.innerHTML = marked.parse(parseReferences(full));
+                aiDiv.innerHTML = marked.parse(parseReferences(full, pendingSources));
                 attachSources(aiDiv, pendingSources);
             } else if (firstContent) {
                 thinkingWrap.remove();
@@ -741,6 +880,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     
     addRecipeBtn.onclick = () => addModal.style.display = 'flex';
+    document.getElementById('addIngBtn').onclick = () => window.addIngRow();
     closeModal.onclick = () => addModal.style.display = 'none';
 
     extractBtn.onclick = async () => {
@@ -900,18 +1040,47 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch(e) {}
     }
 
+    function renderIngList(ingredients) {
+        const list = document.getElementById('ingList');
+        list.innerHTML = '';
+        (ingredients || []).forEach(ing => addIngRow(ing));
+    }
+
+    window.addIngRow = function(ing = {}) {
+        const list = document.getElementById('ingList');
+        const row = document.createElement('div');
+        row.className = 'ing-row-edit';
+        row.innerHTML = `
+            <input class="ing-input ing-nombre" value="${ing.nombre || ''}" placeholder="Ingrediente">
+            <input class="ing-input ing-cant"   value="${ing.cantidad || ''}" placeholder="Cant.">
+            <input class="ing-input ing-unit"   value="${ing.unidad || ''}"  placeholder="Ud.">
+            <button type="button" class="ing-del-btn" onclick="this.closest('.ing-row-edit').remove()">×</button>
+        `;
+        list.appendChild(row);
+        row.querySelector('.ing-nombre').focus();
+    };
+
+    function collectIngredients() {
+        return Array.from(document.querySelectorAll('#ingList .ing-row-edit')).map(row => ({
+            nombre:   row.querySelector('.ing-nombre').value.trim(),
+            cantidad: row.querySelector('.ing-cant').value.trim(),
+            unidad:   row.querySelector('.ing-unit').value.trim(),
+        })).filter(i => i.nombre);
+    }
+
     window.openEditModal = (id) => {
         const r = recipes.find(x => x._id === id);
         if (!r) return;
         
-        document.getElementById('editTitle').value = r.titulo;
-        document.getElementById('editDesc').value = r.descripcion || '';
-        document.getElementById('editDiff').value = r.dificultad || 'Media';
-        document.getElementById('editTime').value = r.tiempos?.total_minutos || 0;
+        document.getElementById('editTitle').value    = r.titulo;
+        document.getElementById('editDesc').value     = r.descripcion || '';
+        document.getElementById('editDiff').value     = r.dificultad || 'Media';
+        document.getElementById('editTime').value     = r.tiempos?.total_minutos || 0;
         document.getElementById('editPortions').value = r.porciones || 0;
-        document.getElementById('editIngs').value = JSON.stringify(r.ingredientes, null, 2);
-        document.getElementById('editSteps').value = (r.pasos || []).join('\n');
-        
+        document.getElementById('editCuisine').value  = r.tipo_cocina || '';
+        renderIngList(r.ingredientes || []);
+        document.getElementById('editSteps').value    = (r.pasos || []).join('\n');
+
         document.getElementById('editModal').style.display = 'flex';
         document.getElementById('magicInstructions').value = '';
         
@@ -933,7 +1102,8 @@ document.addEventListener('DOMContentLoaded', () => {
             dificultad: document.getElementById('editDiff').value,
             tiempos: { total_minutos: parseInt(document.getElementById('editTime').value) || 0 },
             porciones: parseInt(document.getElementById('editPortions').value) || 0,
-            ingredientes: JSON.parse(document.getElementById('editIngs').value),
+            tipo_cocina: document.getElementById('editCuisine').value,
+            ingredientes: collectIngredients(),
             pasos: document.getElementById('editSteps').value.split('\n').filter(s => s.trim())
         };
 
@@ -951,7 +1121,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 document.getElementById('editDiff').value = r.dificultad;
                 document.getElementById('editTime').value = r.tiempos?.total_minutos || 0;
                 document.getElementById('editPortions').value = r.porciones || 0;
-                document.getElementById('editIngs').value = JSON.stringify(r.ingredientes, null, 2);
+                renderIngList(r.ingredientes || []);
+                if (r.tipo_cocina) document.getElementById('editCuisine').value = r.tipo_cocina;
                 document.getElementById('editSteps').value = (r.pasos || []).join('\n');
                 document.getElementById('magicInstructions').value = '';
             }
@@ -974,7 +1145,8 @@ document.addEventListener('DOMContentLoaded', () => {
             dificultad: document.getElementById('editDiff').value,
             tiempos: { total_minutos: parseInt(document.getElementById('editTime').value) || 0 },
             porciones: parseInt(document.getElementById('editPortions').value) || 0,
-            ingredientes: JSON.parse(document.getElementById('editIngs').value),
+            tipo_cocina: document.getElementById('editCuisine').value,
+            ingredientes: collectIngredients(),
             pasos: document.getElementById('editSteps').value.split('\n').filter(s => s.trim())
         };
 

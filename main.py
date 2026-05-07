@@ -6,6 +6,7 @@ Arranque:
     uvicorn main:app --reload --host 0.0.0.0 --port 8000
 """
 
+import asyncio
 import json
 import re
 import uuid
@@ -130,6 +131,9 @@ class MCPCallRequest(BaseModel):
     tool: str
     params: dict = {}
 
+class UpdateChatTitleRequest(BaseModel):
+    title: str
+
 # ─────────────────────────── MCP Tool Definitions ─────────────────────
 # MCP (Model Context Protocol): expone herramientas que la IA puede invocar
 # de forma autónoma para conectarse con la base de datos de recetas.
@@ -248,32 +252,31 @@ rag = RAGPipeline(n_results=3)
 
 # ─────────────────────────── System Prompt ───────────────────────────
 
-SYSTEM_PROMPT = """Eres Ratatui, el legendario 'Petit Chef' de París. Eres un sistema agéntico experto diseñado para gestionar un recetario inteligente.
+SYSTEM_PROMPT = """Eres Ratatui, el asistente culinario personal del usuario. Tienes acceso a su recetario privado mediante herramientas de búsqueda.
 
-═══ TU MISIÓN ═══
-Tu objetivo es ser el asistente culinario definitivo. Debes usar TUS herramientas para consultar el libro de recetas del usuario. NO inventes recetas si puedes encontrarlas en el libro.
+## CUÁNDO USAR HERRAMIENTAS
+Usa `search_recipes` siempre que el usuario mencione:
+- Ingredientes ("pollo", "pasta", "huevos", "zanahoria"…)
+- Tipos de plato o cocina ("postre", "sopa", "italiano", "japonés"…)
+- Restricciones o preferencias ("vegano", "sin gluten", "rápido", "fácil"…)
+- Cualquier pregunta sobre qué cocinar o cómo preparar algo
 
-═══ REGLA DE ORO DE CITACIÓN (CRÍTICO) ═══
-Cada vez que menciones una receta que has encontrado en tu libro, DEBES escribir su nombre seguido de su ID entre corchetes.
-- Formato: **Nombre de la Receta [ID: exact_id]**
-- Ejemplo: "Te recomiendo mi **Risotto de Setas [ID: 550e8400-e29b-41d4-a716-446655440000]** por su cremosidad."
-- No uses iconos sueltos como 📖. Usa el formato anterior para que el sistema cree los botones automáticamente.
+NO uses herramientas para saludos, preguntas generales no culinarias o conversión de unidades.
 
-═══ COMPORTAMIENTO ═══
-1. **Analiza**: Entiende qué ingredientes o platos pide el usuario.
-2. **Busca**: Usa `search_recipes` para encontrar coincidencias.
-3. **Foco**: Si el usuario pide un menú o varias recetas, cítalas todas correctamente con sus IDs respectivos.
+## CITACIÓN DE RECETAS (obligatorio)
+Cuando menciones una receta del libro usa este formato EXACTO la primera vez:
+**Nombre de la Receta [ID: uuid-aqui]**
 
-═══ REGLAS DE ORO ═══
-- Sé elegante, profesional y usa términos franceses ("Mise en place", "S'il vous plaît", "¡Magnifique!").
-- Prioriza SIEMPRE la información del libro sobre tus conocimientos generales.
+Ejemplo: "Te propongo mi **Tortilla de Patatas [ID: 3a4b-...]**, lista en 30 minutos."
+- Solo pon el [ID: ...] la primera vez que cites cada receta
+- No repitas el ID en los ingredientes ni en los pasos
 
-═══ ESTRUCTURA DE RESPUESTA ═══
-Usa Markdown claro:
-1. **L'Inspiration**: Párrafo sugerente.
-2. **### 🛒 Mise en Place**: Lista de ingredientes (agrupa por platos si es un menú).
-3. **### 👨‍🍳 El Proceso Artístico**: Pasos numerados claros.
-4. **💡 Le Petit Secret**: Truco final.
+## ESTILO DE RESPUESTA
+- Responde siempre en español
+- Sé cálido, directo y experto en cocina
+- Usa markdown para estructurar (## Ingredientes, ## Preparación, listas con -)
+- Adapta el nivel de detalle a lo que pide el usuario: si pide una sugerencia rápida, no escribas la receta entera
+- Si no hay recetas relevantes en el libro, da consejos culinarios generales de calidad
 """
 
 EXTRACTION_SCHEMA = """{
@@ -510,46 +513,53 @@ async def search(req: SearchRequest):
 
     return {"recipes": merged[:req.n_results], "query": req.query}
 
-# ─── Chat con IA Agéntica (tool-calling loop) ─────────────────────────
+# ─── Chat con IA Agéntica (background task + SSE) ─────────────────────
 
 def _sse(event_type: str, **kwargs) -> str:
-    """Formatea un evento SSE estándar con JSON en el campo data."""
     return f"data: {json.dumps({'type': event_type, **kwargs}, ensure_ascii=False)}\n\n"
 
+# chat_id → (task, queue)  — tareas activas en curso
+_active: dict[str, tuple[asyncio.Task, asyncio.Queue]] = {}
 
-@app.post("/api/chat")
-async def chat(req: ChatRequest):
-    chat_id = req.chat_id or str(uuid.uuid4())
-    chat_data = get_chat_col().get(ids=[chat_id], include=["documents", "metadatas"])
-    history = json.loads(chat_data["documents"][0]) if chat_data["documents"] else []
 
-    async def event_generator():
-        yield _sse("chat_id", value=chat_id)
+async def _process_chat(
+    chat_id: str,
+    message: str,
+    history: list,
+    chat_data: dict,
+    out: asyncio.Queue,
+) -> None:
+    """
+    Procesa el mensaje, hace streaming a 'out' y guarda el historial en DB.
+    Se ejecuta como tarea independiente: completa aunque el cliente se desconecte.
+    """
+    full_ai  = ""
+    _src: list[dict] = []   # sources numerados de esta respuesta
 
+    async def emit(t: str, **kw):
+        await out.put(_sse(t, **kw))
+
+    try:
         msgs = [{"role": "system", "content": SYSTEM_PROMPT}]
-        for h in history[-10:]:  # últimas 5 exchanges
+        for h in history[-10:]:
             msgs.append(h)
-        msgs.append({"role": "user", "content": req.message})
+        msgs.append({"role": "user", "content": message})
 
-        all_sources = []
+        all_sources: list[dict] = []
 
-        # Loop agéntico: el LLM decide qué herramientas usar (máx. 4 rondas)
+        # ── Loop agéntico (máx. 4 rondas) ────────────────────────────
         for _ in range(4):
-            agent_msg = await llm(msgs, temperature=0.3, tools=MCP_TOOLS)
-            content = agent_msg.get("content") or ""
+            agent_msg  = await llm(msgs, temperature=0.3, tools=MCP_TOOLS)
+            content    = agent_msg.get("content") or ""
             tool_calls = agent_msg.get("tool_calls") or []
 
             if not tool_calls:
                 break
 
             if content.strip():
-                yield _sse("thought", value=content.strip())
+                await emit("thought", value=content.strip())
 
-            msgs.append({
-                "role": "assistant",
-                "content": content,
-                "tool_calls": tool_calls,
-            })
+            msgs.append({"role": "assistant", "content": content, "tool_calls": tool_calls})
 
             for tc in tool_calls:
                 func        = tc.get("function", {})
@@ -558,99 +568,145 @@ async def chat(req: ChatRequest):
                 tool_params = raw_args if isinstance(raw_args, dict) else json.loads(raw_args or "{}")
 
                 if tool_name == "search_recipes":
-                    q = tool_params.get("query", "...")
-                    label = f"Buscando '{q}' en el recetario"
+                    label = f"Buscando «{tool_params.get('query','…')}» en el recetario"
                 elif tool_name == "get_recipe":
                     label = "Consultando detalles de la receta"
                 else:
                     label = tool_name.replace("_", " ").capitalize()
 
-                yield _sse("thought", value=f"{label}...")
-
+                await emit("thought", value=f"{label}…")
                 result_str, sources = await execute_tool(tool_name, tool_params)
                 all_sources.extend(sources)
                 msgs.append({"role": "tool", "content": result_str})
 
-        # Fallback RAG obligatorio si el modelo no llamó ninguna herramienta
+        # ── Fallback RAG si el modelo no usó herramientas ─────────────
         if not all_sources:
-            yield _sse("thought", value="Consultando el recetario...")
-            vec  = await embed(req.message)
-            res  = safe_query(vec, 4, None)
-            docs = parse_docs(res)
+            await emit("thought", value="Consultando el recetario…")
+            docs = parse_docs(safe_query(await embed(message), 4, None))
             if docs:
                 for r in docs:
                     if r.get("_id"):
                         all_sources.append({"id": r["_id"], "titulo": r["titulo"]})
                 msgs.append({
                     "role": "system",
-                    "content": f"Recetas encontradas en el libro:\n{json.dumps(docs, ensure_ascii=False)}"
+                    "content": f"Recetas del libro:\n{json.dumps(docs, ensure_ascii=False)}"
                 })
 
-        # Emitir fuentes únicas al frontend
+        # ── Fuentes numeradas + instrucción de citación ──────────────
         if all_sources:
-            unique_sources = list({s["id"]: s for s in all_sources}.values())
-            yield _sse("sources", value=unique_sources)
+            unique = list({s["id"]: s for s in all_sources}.values())
+            _src   = [{"num": i + 1, "id": s["id"], "titulo": s["titulo"]}
+                      for i, s in enumerate(unique)]
+            await emit("sources", value=_src)
 
-            sources_info = "\n".join([f"- {s['titulo']} [ID: {s['id']}]" for s in unique_sources])
+            numbered_list = "\n".join(f"[{s['num']}] {s['titulo']}" for s in _src)
+            example = _src[0]
             msgs.append({
                 "role": "system",
                 "content": (
-                    "¡ATENCIÓN CHEF! Recetas REALES encontradas en tu libro:\n"
-                    f"{sources_info}\n\n"
-                    "REGLA CRÍTICA DE CITACIÓN:\n"
-                    "1. Cita el ID solo la primera vez que nombres cada receta.\n"
-                    "2. Formato exacto: **Nombre de la Receta [ID: exact_id]**\n"
-                    "3. NO repitas el [ID: ...] en cada paso o ingrediente.\n"
-                    "4. Usa el título correcto de la receta encontrada."
+                    f"Recetas disponibles en el libro:\n{numbered_list}\n\n"
+                    "Al mencionar cualquier receta usa su número entre corchetes "
+                    f"justo después del nombre. Ejemplo: \"{example['titulo']} [{example['num']}]\".\n"
+                    "Solo usa estos números. No pongas corchetes en otras cosas."
                 )
             })
 
-        yield _sse("thought", value="Preparando la respuesta...")
+        await emit("thought", value="Preparando la respuesta…")
 
-        full_ai = ""
+        # ── Respuesta final en streaming ──────────────────────────────
         async for chunk in llm_stream(msgs, temperature=0.1):
             if chunk == "\n\n[DONE]":
-                yield _sse("done")
+                break
             elif chunk:
                 full_ai += chunk
-                yield _sse("token", value=chunk)
+                await emit("token", value=chunk)
 
-        # Persistir historial
-        history.append({"role": "user",      "content": req.message})
-        history.append({"role": "assistant", "content": full_ai})
+        await emit("done")
 
-        is_new  = not chat_data["ids"]
-        old_title = (chat_data["metadatas"][0].get("title", "") if chat_data["metadatas"] else "")
+    except Exception as exc:
+        await emit("error", value=str(exc))
+
+    finally:
+        # ── Persistir historial SIEMPRE, aunque el cliente se haya ido ──
+        if message:
+            history.append({"role": "user", "content": message})
+        if full_ai:
+            history.append({"role": "assistant", "content": full_ai, "sources": _src})
+
+        is_new    = not chat_data["ids"]
+        old_title = chat_data["metadatas"][0].get("title", "") if chat_data["metadatas"] else ""
 
         if is_new or old_title in ("", "Nueva conversación"):
             try:
+                # Usar pregunta + inicio de respuesta para un título más descriptivo
+                ctx = f"Pregunta: {message}"
+                if full_ai:
+                    ctx += f"\nRespuesta: {full_ai[:300]}"
                 t_msg = await llm([
-                    {"role": "system", "content": "Genera un título de máximo 4 palabras para esta consulta culinaria. Solo el texto del título, sin comillas ni puntos."},
-                    {"role": "user",   "content": req.message}
-                ], temperature=0.1)
-                chat_title = t_msg.get("content", req.message[:30]).strip().strip('"').strip('.')
-            except:
-                chat_title = req.message[:30]
+                    {"role": "system", "content": (
+                        "Genera un título de 3-5 palabras para esta conversación culinaria. "
+                        "Sé específico: menciona el plato, ingrediente o técnica principal. "
+                        "Solo el texto, sin comillas ni puntos finales."
+                    )},
+                    {"role": "user", "content": ctx},
+                ], temperature=0.2)
+                chat_title = t_msg.get("content", message[:40]).strip().strip('"').strip(".")
+            except Exception:
+                chat_title = message[:40]
         else:
             chat_title = old_title
 
         meta = {"title": chat_title, "updated_at": int(time.time())}
-        if is_new:
-            get_chat_col().add(
-                ids=[chat_id],
-                documents=[json.dumps(history, ensure_ascii=False)],
-                metadatas=[meta],
-            )
-        else:
-            get_chat_col().update(
-                ids=[chat_id],
-                documents=[json.dumps(history, ensure_ascii=False)],
-                metadatas=[meta],
-            )
+        try:
+            if is_new:
+                get_chat_col().add(
+                    ids=[chat_id],
+                    documents=[json.dumps(history, ensure_ascii=False)],
+                    metadatas=[meta],
+                )
+            else:
+                get_chat_col().update(
+                    ids=[chat_id],
+                    documents=[json.dumps(history, ensure_ascii=False)],
+                    metadatas=[meta],
+                )
+            await emit("title", value=chat_title)
+        except Exception:
+            pass
 
-        yield _sse("title", value=chat_title)
+        # Señalizar fin del stream y limpiar registro
+        await out.put(None)
+        _active.pop(chat_id, None)
 
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+@app.post("/api/chat")
+async def chat(req: ChatRequest):
+    chat_id = req.chat_id or str(uuid.uuid4())
+
+    if chat_id not in _active:
+        chat_data = get_chat_col().get(ids=[chat_id], include=["documents", "metadatas"])
+        history   = json.loads(chat_data["documents"][0]) if chat_data["documents"] else []
+        out: asyncio.Queue = asyncio.Queue()
+        task = asyncio.create_task(
+            _process_chat(chat_id, req.message, history, chat_data, out)
+        )
+        _active[chat_id] = (task, out)
+    else:
+        # Chat ya procesándose — suscribir al stream existente
+        _, out = _active[chat_id]
+
+    async def stream():
+        yield _sse("chat_id", value=chat_id)
+        while True:
+            try:
+                item = await asyncio.wait_for(out.get(), timeout=300.0)
+            except asyncio.TimeoutError:
+                break
+            if item is None:
+                break
+            yield item   # ya es un string SSE formateado
+
+    return StreamingResponse(stream(), media_type="text/event-stream")
 
 # ─── Historial de Chats ───────────────────────────────────────────────
 
@@ -684,6 +740,20 @@ async def get_chat_history(chat_id: str):
     if not data["ids"]:
         raise HTTPException(404)
     return {"id": chat_id, "history": json.loads(data["documents"][0])}
+
+@app.put("/api/chats/{chat_id}")
+async def rename_chat(chat_id: str, req: UpdateChatTitleRequest):
+    data = get_chat_col().get(ids=[chat_id], include=["documents", "metadatas"])
+    if not data["ids"]:
+        raise HTTPException(404)
+    meta = dict(data["metadatas"][0])
+    meta["title"] = req.title.strip()[:120]
+    get_chat_col().update(
+        ids=[chat_id],
+        documents=data["documents"],
+        metadatas=[meta],
+    )
+    return {"id": chat_id, "title": meta["title"]}
 
 @app.delete("/api/chats/{chat_id}")
 async def delete_chat(chat_id: str):

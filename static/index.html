@@ -166,41 +166,37 @@
         </div>
     </div>
 
-    <!-- MODAL: EDITAR RECETA (Rediseñado) -->
+    <!-- MODAL: EDITAR RECETA -->
     <div id="editModal" class="modal-overlay">
-        <div class="modal-box modal-large">
+        <div class="modal-box modal-edit">
             <header class="modal-header">
                 <div>
                     <h2>Editar Receta</h2>
-                    <p class="subtitle">Personaliza tu obra maestra culinaria</p>
+                    <p class="subtitle">Ajusta los detalles de tu receta</p>
                 </div>
                 <button class="close-modal-edit" onclick="document.getElementById('editModal').style.display='none'">&times;</button>
             </header>
-            <div class="modal-body">
-                <!-- SECCIÓN IA: MAGIA -->
-                <div class="magic-ai-section">
-                    <div class="magic-header">
-                        <span class="sparkle">✨</span>
-                        <h3>Reinterpretación con IA</h3>
-                    </div>
-                    <div class="magic-input-group">
-                        <input type="text" id="magicInstructions" placeholder="Ej: 'Añade un toque picante y ajusta para 6 personas'...">
-                        <button id="magicBtn" class="btn-magic">Aplicar Magia</button>
-                    </div>
-                    <p class="help-text">Ratatui reescribirá la receta siguiendo tus deseos.</p>
-                </div>
 
-                <div class="edit-form-grid">
-                    <div class="edit-main-fields">
+            <!-- Barra de magia IA (compacta, arriba) -->
+            <div class="magic-bar">
+                <span class="magic-bar-icon">✨</span>
+                <input type="text" id="magicInstructions" placeholder="Pídele algo a Ratatui: 'Hazla vegana', 'Ajusta para 6 personas', 'Añade un toque picante'…">
+                <button id="magicBtn" class="btn-magic-sm">Aplicar</button>
+            </div>
+
+            <div class="modal-body edit-modal-body">
+                <div class="edit-cols">
+                    <!-- Columna izquierda: datos básicos -->
+                    <div class="edit-col-left">
                         <div class="form-group">
-                            <label>Título de la Receta</label>
+                            <label>Título</label>
                             <input type="text" id="editTitle" class="input-premium">
                         </div>
                         <div class="form-group">
-                            <label>Descripción / Nota del Chef</label>
-                            <textarea id="editDesc" class="input-premium" style="height:80px;"></textarea>
+                            <label>Descripción</label>
+                            <textarea id="editDesc" class="input-premium" rows="3"></textarea>
                         </div>
-                        <div class="form-row">
+                        <div class="form-row-3">
                             <div class="form-group">
                                 <label>Dificultad</label>
                                 <select id="editDiff" class="input-premium">
@@ -218,23 +214,32 @@
                                 <input type="number" id="editPortions" class="input-premium">
                             </div>
                         </div>
-                    </div>
-                    
-                    <div class="edit-complex-fields">
                         <div class="form-group">
-                            <label>Ingredientes (JSON)</label>
-                            <textarea id="editIngs" class="input-premium code-font" style="height:150px;"></textarea>
+                            <label>Tipo de cocina</label>
+                            <input type="text" id="editCuisine" class="input-premium" placeholder="Española, Italiana, Japonesa…">
+                        </div>
+                    </div>
+
+                    <!-- Columna derecha: ingredientes y pasos -->
+                    <div class="edit-col-right">
+                        <div class="form-group">
+                            <div class="ing-label-row">
+                                <label>Ingredientes</label>
+                                <button type="button" class="add-ing-btn" id="addIngBtn">+ Añadir</button>
+                            </div>
+                            <div id="ingList" class="ing-editor-list"></div>
                         </div>
                         <div class="form-group">
-                            <label>Pasos de Preparación</label>
-                            <textarea id="editSteps" class="input-premium" style="height:150px;"></textarea>
+                            <label>Pasos <span class="label-hint">(uno por línea)</span></label>
+                            <textarea id="editSteps" class="input-premium" rows="8" placeholder="Paso 1&#10;Paso 2&#10;Paso 3…"></textarea>
                         </div>
                     </div>
                 </div>
             </div>
+
             <footer class="modal-footer">
                 <button id="cancelEdit" class="btn-secondary">Cancelar</button>
-                <button id="saveEditBtn" class="btn-primary">Guardar Cambios</button>
+                <button id="saveEditBtn" class="btn-primary">Guardar cambios</button>
             </footer>
         </div>
     </div>
