@@ -411,42 +411,140 @@ async def get_recipes(limit: int = 200):
 
 @app.post("/api/search")
 async def search(req: SearchRequest):
-    vec = await embed(req.query)
-    res = safe_query(vec, req.n_results, build_where(req.max_time, req.difficulty))
-    return {"recipes": parse_docs(res), "query": req.query}
+    total = get_col().count()
+    if total == 0:
+        return {"recipes": [], "query": req.query}
+
+    q       = req.query.strip()
+    q_lower = q.lower()
+    words   = [w for w in q_lower.split() if len(w) >= 2]
+    where   = build_where(req.max_time, req.difficulty)
+
+    # ── 1. Búsqueda semántica vectorial ──────────────────────────────────
+    vec = await embed(q) if q else None
+    sem_ids: dict[str, float] = {}   # id → similarity score
+    sem_ordered: list[dict]   = []
+
+    if vec:
+        n = min(max(req.n_results, 30), total)
+        res = safe_query(vec, n, where)
+        for i, doc in enumerate(res["documents"][0]):
+            try:
+                r = json.loads(doc)
+                r = normalize_recipe(r)
+                r["_id"]    = res["ids"][0][i]
+                r["_score"] = round(1.0 - res["distances"][0][i], 4)
+                sem_ids[r["_id"]] = r["_score"]
+                sem_ordered.append(r)
+            except:
+                pass
+
+    # ── 2. Búsqueda textual sobre todos los documentos ───────────────────
+    all_raw = get_col().get(limit=500, include=["documents"])
+    text_hits: list[tuple[int, dict]] = []   # (score, recipe)
+
+    for i, doc in enumerate(all_raw["documents"]):
+        try:
+            r = json.loads(doc)
+            r = normalize_recipe(r)
+            rid = all_raw["ids"][i]
+
+            # Aplicar filtros de tiempo / dificultad
+            if req.max_time and (r.get("tiempos") or {}).get("total_minutos", 9999) > req.max_time:
+                continue
+            if req.difficulty and r.get("dificultad", "") != req.difficulty:
+                continue
+
+            if not words:
+                continue
+
+            searchable = " ".join([
+                r.get("titulo", ""),
+                r.get("descripcion", ""),
+                r.get("tipo_cocina", ""),
+                " ".join(r.get("etiquetas", [])),
+                " ".join(i2.get("nombre", "") for i2 in r.get("ingredientes", [])),
+            ]).lower()
+
+            score = 0
+            for w in words:
+                if w in r.get("titulo", "").lower():            score += 10
+                elif any(w in e.lower() for e in r.get("etiquetas", [])): score += 8
+                elif w in r.get("tipo_cocina", "").lower():     score += 6
+                elif w in " ".join(i2.get("nombre","") for i2 in r.get("ingredientes",[])).lower(): score += 5
+                elif w in searchable:                           score += 2
+
+            if score > 0:
+                r["_id"]    = rid
+                r["_score"] = round(score / (len(words) * 10), 4)
+                text_hits.append((score, r))
+        except:
+            pass
+
+    text_hits.sort(key=lambda x: -x[0])
+    text_ordered = [r for _, r in text_hits]
+
+    # ── 3. Fusión: ambos > solo-texto > solo-semántico ────────────────────
+    text_id_set = {r["_id"] for r in text_ordered}
+    seen: set[str] = set()
+    merged: list[dict] = []
+
+    for r in sem_ordered:           # semántico que también tiene match textual
+        if r["_id"] in text_id_set:
+            merged.append(r)
+            seen.add(r["_id"])
+
+    for r in text_ordered:          # solo texto (coincidencia exacta)
+        if r["_id"] not in seen:
+            merged.append(r)
+            seen.add(r["_id"])
+
+    for r in sem_ordered:           # solo semántico
+        if r["_id"] not in seen:
+            merged.append(r)
+            seen.add(r["_id"])
+
+    # Si no hay query ni filtros, devolver todas ordenadas
+    if not q and not req.max_time and not req.difficulty:
+        merged = text_ordered if text_ordered else []
+
+    return {"recipes": merged[:req.n_results], "query": req.query}
 
 # ─── Chat con IA Agéntica (tool-calling loop) ─────────────────────────
+
+def _sse(event_type: str, **kwargs) -> str:
+    """Formatea un evento SSE estándar con JSON en el campo data."""
+    return f"data: {json.dumps({'type': event_type, **kwargs}, ensure_ascii=False)}\n\n"
+
 
 @app.post("/api/chat")
 async def chat(req: ChatRequest):
     chat_id = req.chat_id or str(uuid.uuid4())
-    chat_data = get_chat_col().get(ids=[chat_id])
+    chat_data = get_chat_col().get(ids=[chat_id], include=["documents", "metadatas"])
     history = json.loads(chat_data["documents"][0]) if chat_data["documents"] else []
 
     async def event_generator():
-        yield f"CHAT_ID: {chat_id}\n"
+        yield _sse("chat_id", value=chat_id)
 
         msgs = [{"role": "system", "content": SYSTEM_PROMPT}]
-        for h in history[-6:]:
+        for h in history[-10:]:  # últimas 5 exchanges
             msgs.append(h)
         msgs.append({"role": "user", "content": req.message})
 
         all_sources = []
 
-        # Loop agéntico: el LLM decide qué herramientas usar (máx. 3 rondas)
-        for _ in range(3):
+        # Loop agéntico: el LLM decide qué herramientas usar (máx. 4 rondas)
+        for _ in range(4):
             agent_msg = await llm(msgs, temperature=0.3, tools=MCP_TOOLS)
             content = agent_msg.get("content") or ""
             tool_calls = agent_msg.get("tool_calls") or []
 
             if not tool_calls:
-                break  # No hay herramientas -> El modelo ya quiere responder. Rompemos para ir al stream final.
+                break
 
-            # Si hay herramientas, el contenido previo se trata como un pensamiento/reflexión
-            if content:
-                yield f"THOUGHT: {content.strip()}\n"
+            if content.strip():
+                yield _sse("thought", value=content.strip())
 
-            # Registrar la llamada del agente en el historial de mensajes
             msgs.append({
                 "role": "assistant",
                 "content": content,
@@ -454,12 +552,11 @@ async def chat(req: ChatRequest):
             })
 
             for tc in tool_calls:
-                func       = tc.get("function", {})
-                tool_name  = func.get("name", "")
-                raw_args   = func.get("arguments", {})
+                func        = tc.get("function", {})
+                tool_name   = func.get("name", "")
+                raw_args    = func.get("arguments", {})
                 tool_params = raw_args if isinstance(raw_args, dict) else json.loads(raw_args or "{}")
 
-                # Label más descriptivo
                 if tool_name == "search_recipes":
                     q = tool_params.get("query", "...")
                     label = f"Buscando '{q}' en el recetario"
@@ -468,60 +565,77 @@ async def chat(req: ChatRequest):
                 else:
                     label = tool_name.replace("_", " ").capitalize()
 
-                yield f"THOUGHT: {label}...\n"
+                yield _sse("thought", value=f"{label}...")
 
                 result_str, sources = await execute_tool(tool_name, tool_params)
                 all_sources.extend(sources)
-
                 msgs.append({"role": "tool", "content": result_str})
+
+        # Fallback RAG obligatorio si el modelo no llamó ninguna herramienta
+        if not all_sources:
+            yield _sse("thought", value="Consultando el recetario...")
+            vec  = await embed(req.message)
+            res  = safe_query(vec, 4, None)
+            docs = parse_docs(res)
+            if docs:
+                for r in docs:
+                    if r.get("_id"):
+                        all_sources.append({"id": r["_id"], "titulo": r["titulo"]})
+                msgs.append({
+                    "role": "system",
+                    "content": f"Recetas encontradas en el libro:\n{json.dumps(docs, ensure_ascii=False)}"
+                })
 
         # Emitir fuentes únicas al frontend
         if all_sources:
             unique_sources = list({s["id"]: s for s in all_sources}.values())
-            yield f"SOURCES: {json.dumps(unique_sources, ensure_ascii=False)}\n"
-            
-            # INYECCIÓN DE COHERENCIA: Recordatorio final al LLM con las recetas reales encontradas
+            yield _sse("sources", value=unique_sources)
+
             sources_info = "\n".join([f"- {s['titulo']} [ID: {s['id']}]" for s in unique_sources])
             msgs.append({
                 "role": "system",
                 "content": (
-                    "¡ATENCIÓN CHEF! Has encontrado estas recetas REALES en tu libro:\n"
+                    "¡ATENCIÓN CHEF! Recetas REALES encontradas en tu libro:\n"
                     f"{sources_info}\n\n"
                     "REGLA CRÍTICA DE CITACIÓN:\n"
-                    "1. Cita el ID solo la primera vez que nombres la receta o en el título de su sección.\n"
-                    "2. NO incluyas el [ID: ...] en cada paso del proceso o en cada ingrediente.\n"
-                    "3. Asegúrate de usar el título correcto. Si el usuario te pide Bibimbap, no uses el título de otra receta (como Arroz Chaufa) por error."
+                    "1. Cita el ID solo la primera vez que nombres cada receta.\n"
+                    "2. Formato exacto: **Nombre de la Receta [ID: exact_id]**\n"
+                    "3. NO repitas el [ID: ...] en cada paso o ingrediente.\n"
+                    "4. Usa el título correcto de la receta encontrada."
                 )
             })
 
-        yield "THOUGHT: Preparando la respuesta definitiva...\n"
+        yield _sse("thought", value="Preparando la respuesta...")
 
-        # Respuesta final en streaming con temperatura baja para máxima coherencia
         full_ai = ""
         async for chunk in llm_stream(msgs, temperature=0.1):
-            if chunk and chunk != "\n\n[DONE]":
+            if chunk == "\n\n[DONE]":
+                yield _sse("done")
+            elif chunk:
                 full_ai += chunk
-            yield chunk
+                yield _sse("token", value=chunk)
 
         # Persistir historial
         history.append({"role": "user",      "content": req.message})
         history.append({"role": "assistant", "content": full_ai})
-        
-        # Determinar el título: si es nuevo o el título es genérico, resumir la primera pregunta
-        if not chat_data["documents"] or chat_data["metadatas"][0].get("title") == "Nueva conversación":
+
+        is_new  = not chat_data["ids"]
+        old_title = (chat_data["metadatas"][0].get("title", "") if chat_data["metadatas"] else "")
+
+        if is_new or old_title in ("", "Nueva conversación"):
             try:
                 t_msg = await llm([
                     {"role": "system", "content": "Genera un título de máximo 4 palabras para esta consulta culinaria. Solo el texto del título, sin comillas ni puntos."},
-                    {"role": "user", "content": req.message}
+                    {"role": "user",   "content": req.message}
                 ], temperature=0.1)
                 chat_title = t_msg.get("content", req.message[:30]).strip().strip('"').strip('.')
             except:
                 chat_title = req.message[:30]
         else:
-            chat_title = chat_data["metadatas"][0].get("title", "Chat")
+            chat_title = old_title
 
         meta = {"title": chat_title, "updated_at": int(time.time())}
-        if not chat_data["ids"]:
+        if is_new:
             get_chat_col().add(
                 ids=[chat_id],
                 documents=[json.dumps(history, ensure_ascii=False)],
@@ -533,6 +647,8 @@ async def chat(req: ChatRequest):
                 documents=[json.dumps(history, ensure_ascii=False)],
                 metadatas=[meta],
             )
+
+        yield _sse("title", value=chat_title)
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 

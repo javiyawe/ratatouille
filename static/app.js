@@ -32,6 +32,16 @@ document.addEventListener('DOMContentLoaded', () => {
     let extractedRecipe = null;
     let currentChatId = localStorage.getItem('last_chat_id');
 
+    let isSearchMode = false;
+
+    // Muestra cantidad + unidad sin duplicar si la unidad ya va en la cantidad
+    function fmtQty(ing) {
+        const q = (ing.cantidad || '').trim();
+        const u = (ing.unidad   || '').trim();
+        if (!u || q.toLowerCase().includes(u.toLowerCase())) return q;
+        return `${q} ${u}`;
+    }
+
     // --- Boot ---
     setTimeout(async () => {
         await loadRecipes();
@@ -103,15 +113,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Recipe Logic ---
 
+    let allRecipes = [];  // copia maestra sin filtrar
+
     async function loadRecipes() {
         recipeList.innerHTML = '<div style="padding:2rem; color:#999; text-align:center;">Abriendo el libro...</div>';
         try {
             const res = await fetch('/api/recipes?limit=500');
             const data = await res.json();
-            recipes = data.recipes || [];
+            allRecipes = data.recipes || [];
+            recipes = [...allRecipes];
+            isSearchMode = false;
             sortAndRender();
             updateStats();
-            // No recipe selected by default as requested
         } catch (e) {
             recipeList.innerHTML = '<div style="padding:2rem; color:#e74c3c;">Error al conectar con la cocina.</div>';
         }
@@ -119,18 +132,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function sortAndRender() {
         const val = sortSelect.value;
-        if (val === 'alpha') recipes.sort((a,b) => a.titulo.localeCompare(b.titulo));
-        else if (val === 'time') recipes.sort((a,b) => (a.tiempos?.total_minutos || 999) - (b.tiempos?.total_minutos || 999));
-        else if (val === 'difficulty') {
+        if (val === 'relevance') {
+            // En modo búsqueda: mantener orden por relevancia; en modo normal: alfabético
+            if (!isSearchMode) recipes.sort((a,b) => a.titulo.localeCompare(b.titulo));
+        } else if (val === 'alpha') {
+            recipes.sort((a,b) => a.titulo.localeCompare(b.titulo));
+        } else if (val === 'time') {
+            recipes.sort((a,b) => (a.tiempos?.total_minutos || 999) - (b.tiempos?.total_minutos || 999));
+        } else if (val === 'difficulty') {
             const m = {'Fácil':1, 'Media':2, 'Difícil':3};
             recipes.sort((a,b) => (m[a.dificultad]||2) - (m[b.dificultad]||2));
         } else if (val === 'favs') {
             const f = JSON.parse(localStorage.getItem('favs')||'[]');
-            recipes.sort((a,b) => {
-                const aFav = f.includes(a._id) ? 0 : 1;
-                const bFav = f.includes(b._id) ? 0 : 1;
-                return aFav - bFav;
-            });
+            recipes.sort((a,b) => (f.includes(a._id)?0:1) - (f.includes(b._id)?0:1));
         }
         renderList();
     }
@@ -139,27 +153,41 @@ document.addEventListener('DOMContentLoaded', () => {
         const criteria = sortSelect.value;
         let html = '';
         let lastL = '';
-        
+
         if (!recipes.length) {
-            recipeList.innerHTML = '<p style="padding:2rem; color:#999; text-align:center;">No hay recetas guardadas.</p>';
+            const msg = isSearchMode
+                ? 'Sin resultados para esta búsqueda.'
+                : 'No hay recetas guardadas.';
+            recipeList.innerHTML = `<p style="padding:2rem; color:#999; text-align:center;">${msg}</p>`;
             return;
         }
 
+        if (isSearchMode) {
+            html += `<div class="search-results-header">${recipes.length} resultado${recipes.length!==1?'s':''}</div>`;
+        }
+
         recipes.forEach(r => {
-            if (criteria === 'alpha') {
+            if (!isSearchMode && criteria === 'alpha') {
                 const char = (r.titulo || '#')[0].toUpperCase();
                 if (char !== lastL) {
                     html += `<div class="letter-divider">${char}</div>`;
                     lastL = char;
                 }
             }
+
+            const tags = (r.etiquetas || []).slice(0,2).map(t =>
+                `<span class="recipe-tag">${t}</span>`).join('');
+            const timeInfo = r.tiempos?.total_minutos
+                ? `<span class="meta-time">⏱ ${r.tiempos.total_minutos} min</span>` : '';
+
             html += `
                 <div class="recipe-item ${currentSelectedId === r._id ? 'active' : ''}" onclick="viewRecipe('${r._id}')">
                     <div class="recipe-item-header">
                         <h3>${r.titulo}</h3>
                         ${isFav(r._id) ? '<span class="list-star">★</span>' : ''}
                     </div>
-                    <div class="meta">${r.tipo_cocina || 'Francesa'} • ${r.dificultad || 'Media'}</div>
+                    <div class="meta">${r.tipo_cocina || 'Francesa'} • ${r.dificultad || 'Media'} ${timeInfo}</div>
+                    ${tags ? `<div class="recipe-tags-row">${tags}</div>` : ''}
                 </div>
             `;
         });
@@ -199,7 +227,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         ${r.ingredientes.map(i => `
                             <div class="ing-row">
                                 <span>${i.nombre}</span>
-                                <b>${i.cantidad} ${i.unidad}</b>
+                                <b>${fmtQty(i)}</b>
                             </div>
                         `).join('')}
                     </div>
@@ -267,7 +295,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     ${r.ingredientes.map(i => `
                         <li class="preview-ing-item">
                             <span>${i.nombre}</span>
-                            <b>${i.cantidad} ${i.unidad}</b>
+                            <b>${fmtQty(i)}</b>
                         </li>
                     `).join('')}
                 </ul>
@@ -511,7 +539,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Regex para capturar el nombre antes del ID: "Nombre de Receta [ID: uuid]"
         const idRegex = /([^#*\[\n\r]+)?\s*\[[iI][dD]:\s*([0-9a-fA-F-]{8,36})\]/g;
         
-        return text.replace(idRegex, (match, name, id) => {
+        return text.replace(idRegex, (_match, name, id) => {
             const cleanId = id.trim();
             const displayName = name ? name.trim() : "Ver Receta";
             
@@ -532,7 +560,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // ── handleChat — con buffer de streaming robusto ─────────────────────
+    // ── handleChat — SSE JSON protocol ──────────────────────────────────
 
     async function handleChat() {
         const text = chatInput.value.trim();
@@ -566,7 +594,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const reader = res.body.getReader();
             const decoder = new TextDecoder();
-            let buffer = ''; // Acumula texto parcial hasta tener líneas completas
+            let buffer = '';
 
             while (true) {
                 const { done, value } = await reader.read();
@@ -574,80 +602,80 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 buffer += decoder.decode(value, { stream: true });
 
-                // Procesar solo líneas completas (separadas por \n)
-                const lines = buffer.split('\n');
-                buffer = lines.pop(); // La última (incompleta) vuelve al buffer
+                // Los eventos SSE están delimitados por \n\n
+                const parts = buffer.split('\n\n');
+                buffer = parts.pop(); // El último (incompleto) vuelve al buffer
 
-                for (const line of lines) {
-                    const trimmed = line.trim();
-                    if (!trimmed) continue;
+                for (const part of parts) {
+                    for (const line of part.split('\n')) {
+                        if (!line.startsWith('data: ')) continue;
+                        let event;
+                        try { event = JSON.parse(line.slice(6)); } catch(_) { continue; }
 
-                    if (trimmed.startsWith('CHAT_ID: ')) {
-                        const newId = trimmed.slice(9);
-                        if (newId && currentChatId !== newId) {
-                            currentChatId = newId;
-                            localStorage.setItem('last_chat_id', newId);
-                            loadChatHistory();
-                        }
+                        switch (event.type) {
+                            case 'chat_id': {
+                                const newId = event.value;
+                                if (newId && currentChatId !== newId) {
+                                    currentChatId = newId;
+                                    localStorage.setItem('last_chat_id', newId);
+                                    loadChatHistory();
+                                }
+                                break;
+                            }
+                            case 'thought': {
+                                chefStatus.textContent = event.value;
+                                setThinkingLabel(thinkingWrap, event.value);
+                                break;
+                            }
+                            case 'sources': {
+                                pendingSources = event.value;
+                                break;
+                            }
+                            case 'token': {
+                                if (firstContent) {
+                                    thinkingWrap.remove();
+                                    aiDiv = addAiMsg('');
+                                    firstContent = false;
+                                    chefStatus.textContent = 'Ratatui está escribiendo';
+                                }
+                                // Acumula el valor exacto del token (sin añadir \n espurios)
+                                full += event.value;
+                                aiDiv.innerHTML = marked.parse(parseReferences(full)) + '<span class="streaming-cursor"></span>';
 
-                    } else if (trimmed.startsWith('THOUGHT: ')) {
-                        const thought = trimmed.slice(9);
-                        chefStatus.textContent = thought;
-                        setThinkingLabel(thinkingWrap, thought);
-
-                    } else if (trimmed.startsWith('SOURCES: ')) {
-                        try { pendingSources = JSON.parse(trimmed.slice(9)); } catch(_) {}
-
-                    } else if (trimmed === '[DONE]') {
-                        // fin del stream
-
-                    } else {
-                        // Token de contenido — mostrar burbuja AI
-                        if (firstContent) {
-                            thinkingWrap.remove();
-                            aiDiv = addAiMsg('');
-                            firstContent = false;
-                            chefStatus.textContent = 'Ratatui está escribiendo';
-                        }
-                        full += line + '\n';
-                        // IMPORTANTE: parseReferences ANTES de marked.parse
-                        aiDiv.innerHTML = marked.parse(parseReferences(full)) + '<span class="streaming-cursor"></span>';
-                        
-                        // Scroll natural: solo si el usuario no ha subido a leer
-                        const threshold = 100;
-                        const isNearBottom = chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight < threshold;
-                        
-                        if (isNearBottom) {
-                            const cursor = aiDiv.querySelector('.streaming-cursor');
-                            if (cursor) cursor.scrollIntoView({ block: 'end', behavior: 'auto' });
+                                const isNearBottom = chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight < 100;
+                                if (isNearBottom) {
+                                    const cursor = aiDiv.querySelector('.streaming-cursor');
+                                    if (cursor) cursor.scrollIntoView({ block: 'end', behavior: 'auto' });
+                                }
+                                break;
+                            }
+                            case 'done': {
+                                // Renderizado final limpio (sin cursor)
+                                if (aiDiv) {
+                                    aiDiv.innerHTML = marked.parse(parseReferences(full));
+                                    attachSources(aiDiv, pendingSources);
+                                }
+                                chefStatus.textContent = 'Listo para más magia';
+                                break;
+                            }
+                            case 'title': {
+                                loadChatHistory();
+                                break;
+                            }
                         }
                     }
                 }
             }
 
-            // Procesar cualquier resto en el buffer
-            if (buffer.trim() &&
-                !buffer.startsWith('THOUGHT:') &&
-                !buffer.startsWith('SOURCES:') &&
-                !buffer.startsWith('CHAT_ID:')) {
-                if (firstContent) {
-                    thinkingWrap.remove();
-                    aiDiv = addAiMsg('');
-                    firstContent = false;
-                }
-                full += buffer;
-            }
-
-            // Renderizado final limpio (sin cursor)
-            if (aiDiv) {
+            // Asegurar renderizado final si el stream terminó sin evento 'done'
+            if (aiDiv && aiDiv.innerHTML.includes('streaming-cursor')) {
                 aiDiv.innerHTML = marked.parse(parseReferences(full));
                 attachSources(aiDiv, pendingSources);
-            } else {
+            } else if (firstContent) {
                 thinkingWrap.remove();
             }
 
             chefStatus.textContent = 'Listo para más magia';
-            loadChatHistory();
 
         } catch (e) {
             thinkingWrap.remove();
@@ -667,17 +695,39 @@ document.addEventListener('DOMContentLoaded', () => {
         el.style.height = Math.min(el.scrollHeight, 120) + 'px';
     }
 
-    // --- Search & Modals ---
+    // --- Search & Filter Chips ---
 
-    searchInput.addEventListener('input', debounce(async () => {
-        const q = searchInput.value;
-        if (!q) return loadRecipes();
-        const res = await fetch('/api/search', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({query:q, n_results:100})});
-        const data = await res.json();
-        recipes = data.recipes;
-        renderList();
-    }, 400));
+    async function runSearch() {
+        const q = searchInput.value.trim();
 
+        if (!q) {
+            isSearchMode = false;
+            recipes = [...allRecipes];
+            sortAndRender();
+            return;
+        }
+
+        isSearchMode = true;
+        recipeList.innerHTML = '<div class="search-loading">Buscando…</div>';
+
+        try {
+            const res = await fetch('/api/search', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query: q, n_results: 100 })
+            });
+            const data = await res.json();
+            recipes = data.recipes || [];
+            if (sortSelect.value === 'alpha' || sortSelect.value === 'relevance') {
+                sortSelect.value = 'relevance';
+            }
+            sortAndRender();
+        } catch (e) {
+            recipeList.innerHTML = '<div style="padding:2rem;color:#e74c3c;">Error en la búsqueda.</div>';
+        }
+    }
+
+    searchInput.addEventListener('input', debounce(runSearch, 350));
     sortSelect.onchange = sortAndRender;
     sendChat.onclick = handleChat;
     newChatBtn.onclick = createNewChat;
@@ -768,7 +818,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         ${(extractedRecipe.ingredientes || []).map(i => `
                             <li class="preview-ing-item">
                                 <span>${i.nombre}</span>
-                                <b>${i.cantidad} ${i.unidad}</b>
+                                <b>${fmtQty(i)}</b>
                             </li>
                         `).join('')}
                     </ul>
@@ -819,7 +869,8 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const res = await fetch(`/api/recipes/${id}`, { method: 'DELETE' });
             if (!res.ok) throw new Error();
-            recipes = recipes.filter(r => r._id !== id);
+            recipes    = recipes.filter(r => r._id !== id);
+            allRecipes = allRecipes.filter(r => r._id !== id);
             currentSelectedId = null;
             recipeDetail.innerHTML = '<div class="empty-state"><div class="empty-icon">🍲</div><p>Elige una receta del libro para comenzar la magia.</p></div>';
             renderList();
