@@ -587,7 +587,30 @@ async def _process_chat(
     Se ejecuta como tarea independiente: completa aunque el cliente se desconecte.
     """
     full_ai  = ""
-    _src: list[dict] = []   # sources numerados de esta respuesta
+    _src: list[dict] = []
+
+    # ── Guardar el mensaje del usuario en la BD inmediatamente ──────────
+    # Así si el usuario cambia de chat antes de que responda la IA,
+    # su mensaje ya está persistido y aparecerá al volver.
+    _wh = history + [{"role": "user", "content": message}]  # working history
+    _db_exists = not is_new  # ¿ya hay registro en la BD?
+    try:
+        with _chat_conn() as conn:
+            if is_new:
+                conn.execute(
+                    "INSERT INTO chats (id, title, history, updated_at) VALUES (?, ?, ?, ?)",
+                    (chat_id, old_title or "Nueva conversación",
+                     json.dumps(_wh, ensure_ascii=False), int(time.time())),
+                )
+                _db_exists = True
+            else:
+                conn.execute(
+                    "UPDATE chats SET history=?, updated_at=? WHERE id=?",
+                    (json.dumps(_wh, ensure_ascii=False), int(time.time()), chat_id),
+                )
+            conn.commit()
+    except Exception:
+        pass
 
     async def emit(t: str, **kw):
         await out.put(_sse(t, **kw))
@@ -680,11 +703,10 @@ async def _process_chat(
         await emit("error", value=str(exc))
 
     finally:
-        # ── Persistir historial SIEMPRE, aunque el cliente se haya ido ──
-        if message:
-            history.append({"role": "user", "content": message})
+        # _wh ya contiene el mensaje del usuario (guardado al inicio).
+        # Solo añadimos la respuesta del AI si la hay.
         if full_ai:
-            history.append({"role": "assistant", "content": full_ai, "sources": _src})
+            _wh.append({"role": "assistant", "content": full_ai, "sources": _src})
 
         if is_new or old_title in ("", "Nueva conversación"):
             try:
@@ -707,19 +729,19 @@ async def _process_chat(
 
         try:
             with _chat_conn() as conn:
-                if is_new:
-                    conn.execute(
-                        "INSERT INTO chats (id, title, history, updated_at) VALUES (?, ?, ?, ?)",
-                        (chat_id, chat_title,
-                         json.dumps(history, ensure_ascii=False),
-                         int(time.time())),
-                    )
-                else:
+                if _db_exists:
                     conn.execute(
                         "UPDATE chats SET title=?, history=?, updated_at=? WHERE id=?",
                         (chat_title,
-                         json.dumps(history, ensure_ascii=False),
+                         json.dumps(_wh, ensure_ascii=False),
                          int(time.time()), chat_id),
+                    )
+                else:
+                    conn.execute(
+                        "INSERT INTO chats (id, title, history, updated_at) VALUES (?, ?, ?, ?)",
+                        (chat_id, chat_title,
+                         json.dumps(_wh, ensure_ascii=False),
+                         int(time.time())),
                     )
                 conn.commit()
             await emit("title", value=chat_title)

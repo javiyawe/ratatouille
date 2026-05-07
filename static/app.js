@@ -1,7 +1,6 @@
 document.addEventListener('DOMContentLoaded', () => {
     // UI Elements
     const layoutLibroBtn = document.getElementById('layoutLibroBtn');
-    const layoutSplitBtn = document.getElementById('layoutSplitBtn');
     const layoutChatBtn  = document.getElementById('layoutChatBtn');
     const viewLibro = document.getElementById('viewLibro');
     const viewChat  = document.getElementById('viewChat');
@@ -35,9 +34,9 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentChatId = localStorage.getItem('last_chat_id');
 
     let isSearchMode    = false;
-    let autoScroll      = true;          // sigue el scroll automáticamente
-    let displayedChatId = null;          // ID del chat actualmente en el DOM
-    let currentLayout   = localStorage.getItem('layout') || 'libro';
+    let autoScroll      = true;
+    let displayedChatId = null;
+    let currentLayout   = localStorage.getItem('layout') || 'libro';  // 'libro' | 'chat'
 
     // Muestra cantidad + unidad sin duplicar si la unidad ya va en la cantidad
     function fmtQty(ing) {
@@ -58,7 +57,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }, 200);
 
     layoutLibroBtn.onclick = () => setLayout('libro');
-    layoutSplitBtn.onclick = () => setLayout('split');
     layoutChatBtn.onclick  = () => setLayout('chat');
 
     // --- Navigation & Routing ---
@@ -73,14 +71,12 @@ document.addEventListener('DOMContentLoaded', () => {
         history.replaceState({}, '', path);
     }
 
-    /** Cambia el modo de layout y actualiza el viewport + botones del nav */
     function setLayout(mode, updateUrl = true) {
         currentLayout = mode;
         localStorage.setItem('layout', mode);
 
         appViewport.className = `app-viewport mode-${mode}`;
         layoutLibroBtn.classList.toggle('active', mode === 'libro');
-        layoutSplitBtn.classList.toggle('active', mode === 'split');
         layoutChatBtn.classList.toggle('active',  mode === 'chat');
 
         if (mode !== 'chat') previewPanel.classList.remove('active');
@@ -89,18 +85,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (mode === 'libro') {
             navigate(currentSelectedId ? `/libro/recipe/${currentSelectedId}` : '/libro');
-        } else if (mode === 'chat') {
+        } else {
             navigate(currentChatId ? `/chat/${currentChatId}` : '/chat');
         }
-        // split: mantener URL actual, ambos paneles activos
     }
 
     async function handleRouting() {
         const path = window.location.pathname;
 
         if (path.startsWith('/chat')) {
-            // Solo cambiar layout si estamos en modo libro puro
-            if (currentLayout === 'libro') setLayout('chat', false);
+            if (currentLayout !== 'chat') setLayout('chat', false);
 
             const chatId = path.split('/')[2];
             if (chatId) {
@@ -117,8 +111,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
         } else {
-            // Solo cambiar layout si estamos en modo chat puro
-            if (currentLayout === 'chat') setLayout('libro', false);
+            if (currentLayout !== 'libro') setLayout('libro', false);
 
             if (!path.startsWith('/libro')) redirect('/libro');
 
@@ -274,12 +267,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     window.previewRecipe = async (id) => {
         const cleanId = id.replace(/[\[\]]/g, '').trim();
-
-        // En modo dividido: abrir la receta en el panel del libro (integración clave)
-        if (currentLayout === 'split') {
-            await viewRecipe(cleanId, false);
-            return;
-        }
 
         let r = recipes.find(x => x._id === cleanId);
         if (!r) {
@@ -889,14 +876,9 @@ document.addEventListener('DOMContentLoaded', () => {
     chatInput.addEventListener('input', () => autoResize(chatInput));
     chatInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleChat(); } });
 
-    // Modo sin distracciones — en chat puro oculta sidebar; en split activa modo chat
     document.getElementById('kitchenModeBtn').addEventListener('click', () => {
-        if (currentLayout === 'split') {
-            setLayout('chat');
-        } else {
-            const sidebar = document.querySelector('.chat-sidebar');
-            if (sidebar) sidebar.style.display = sidebar.style.display === 'none' ? '' : 'none';
-        }
+        const sidebar = document.querySelector('.chat-sidebar');
+        if (sidebar) sidebar.style.display = sidebar.style.display === 'none' ? '' : 'none';
     });
     
     addRecipeBtn.onclick = () => addModal.style.display = 'flex';

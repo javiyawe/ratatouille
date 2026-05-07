@@ -2,7 +2,11 @@
   "permissions": {
     "allow": [
       "Bash(python -c \"import ast; ast.parse\\(open\\('main.py'\\).read\\(\\)\\); print\\('main.py OK'\\)\")",
-      "Bash(python -c \"import ast; ast.parse\\(open\\('main.py'\\).read\\(\\)\\); print\\('OK'\\)\")"
+      "Bash(python -c \"import ast; ast.parse\\(open\\('main.py'\\).read\\(\\)\\); print\\('OK'\\)\")",
+      "Bash(curl -s http://localhost:8000/api/recipes?limit=200)",
+      "Bash(python3 -c \"import json,sys; r=json.load\\(sys.stdin\\); [print\\(x['titulo']\\) for x in r['recipes']]\")",
+      "Bash(python3 -c ' *)",
+      "Bash(.venv/bin/python seed_europe.py)"
     ]
   }
 }
