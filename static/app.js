@@ -32,8 +32,9 @@ document.addEventListener('DOMContentLoaded', () => {
     let extractedRecipe = null;
     let currentChatId = localStorage.getItem('last_chat_id');
 
-    let isSearchMode = false;
-    let autoScroll   = true;   // sigue el scroll automáticamente salvo que el usuario suba
+    let isSearchMode   = false;
+    let autoScroll     = true;    // sigue el scroll automáticamente salvo que el usuario suba
+    let displayedChatId = null;   // ID del chat actualmente renderizado en el DOM
 
     // Muestra cantidad + unidad sin duplicar si la unidad ya va en la cantidad
     function fmtQty(ing) {
@@ -223,6 +224,7 @@ document.addEventListener('DOMContentLoaded', () => {
         currentSelectedId = id;
         renderList();
 
+        recipeDetail.scrollTop = 0;   // resetear antes de pintar para que no herede scroll previo
         recipeDetail.innerHTML = `
             <div class="detail-paper">
                 <header class="detail-header">
@@ -267,8 +269,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
             </div>
         `;
-        // Scroll reset robusto
-        recipeDetail.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
     window.previewRecipe = async (id) => {
@@ -430,7 +430,8 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             await fetch(`/api/chats/${id}`, { method: 'DELETE' });
             if (currentChatId === id) {
-                currentChatId = null;
+                currentChatId   = null;
+                displayedChatId = null;
                 localStorage.removeItem('last_chat_id');
                 renderWelcome();
             }
@@ -481,9 +482,17 @@ document.addEventListener('DOMContentLoaded', () => {
         );
         if (!shouldLoad) return;
 
+        // Si este chat ya está renderizado en el DOM (el usuario vuelve desde el libro),
+        // no re-fetchamos: los mensajes pendientes siguen ahí.
+        if (id === displayedChatId && chatMessages.children.length > 0
+                && !chatMessages.querySelector('.welcome-container')) {
+            return;
+        }
+
         // Parar cualquier poll anterior de otro chat
         Object.keys(_pendingPolls).forEach(cid => { if (cid !== id) _stopPoll(cid); });
 
+        displayedChatId = id;
         chatMessages.innerHTML = '<div style="padding:4rem; text-align:center; color:#bbb; font-family:var(--serif); font-style:italic;">Preparando la mesa...</div>';
         try {
             const res  = await fetch(`/api/chats/${id}`);
@@ -561,7 +570,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 body: JSON.stringify({ title: 'Nueva conversación' })
             });
             const data = await res.json();
-            currentChatId = data.id;
+            currentChatId   = data.id;
+            displayedChatId = data.id;
             localStorage.setItem('last_chat_id', currentChatId);
             if (withWelcome) {
                 navigate(`/chat/${currentChatId}`);
@@ -718,6 +728,7 @@ document.addEventListener('DOMContentLoaded', () => {
         autoResize(chatInput);
 
         if (!currentChatId) await createNewChat(false);
+        displayedChatId = currentChatId;   // este chat está vivo en el DOM
 
         sendChat.disabled = true;
         chefStatus.textContent = 'Ratatui está pensando';
