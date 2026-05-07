@@ -1300,12 +1300,21 @@ body {
     text-decoration: none !important;
     vertical-align: middle;
     border: 1px solid rgba(255,255,255,0.1);
+    position: relative;
+    z-index: 99;
+    pointer-events: auto !important;
+    cursor: pointer !important;
+    user-select: none;
+}
+
+.recipe-ref * {
+    pointer-events: none !important;
 }
 
 .recipe-ref:hover {
     transform: translateY(-2px) scale(1.05);
-    box-shadow: 0 6px 12px rgba(139, 69, 19, 0.25);
-    filter: brightness(1.15);
+    box-shadow: 0 6px 15px rgba(139, 69, 19, 0.3);
+    filter: brightness(1.2);
 }
 
 .ref-icon {

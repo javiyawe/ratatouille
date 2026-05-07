@@ -221,15 +221,24 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     window.previewRecipe = async (id) => {
-        let r = recipes.find(x => x._id === id);
+        // Limpiar el ID por si viene con caracteres extraños
+        const cleanId = id.replace(/[\[\]]/g, '').trim();
+        
+        let r = recipes.find(x => x._id === cleanId);
         if (!r) {
             try {
+                // Fallback: cargar todas y buscar
                 const res = await fetch(`/api/recipes?limit=500`);
                 const data = await res.json();
-                r = data.recipes.find(x => x._id === id);
-            } catch(e) {}
+                recipes = data.recipes || []; // Actualizar cache local
+                r = recipes.find(x => x._id === cleanId);
+            } catch(e) { console.error("Error fetching recipes for preview", e); }
         }
-        if (!r) return;
+        
+        if (!r) {
+            console.warn("Recipe not found for ID:", cleanId);
+            return;
+        }
 
         previewContent.innerHTML = `
             <h1>${r.titulo}</h1>
@@ -274,11 +283,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 `).join('')}
             </div>
 
-            <button class="btn-primary" style="width:100%; margin-top:1rem; padding: 1rem;" onclick="viewRecipe('${id}')">
+            <button class="btn-primary" style="width:100%; margin-top:1rem; padding: 1rem;" onclick="viewRecipe('${cleanId}')">
                 Ver en el libro completo
             </button>
         `;
         previewPanel.classList.add('active');
+        
+        // Scroll al inicio del preview
+        previewContent.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
     closePreviewBtn.onclick = () => previewPanel.classList.remove('active');
@@ -347,7 +359,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         addUserMsg(m.content);
                     } else if (m.role === 'assistant') {
                         const bubble = addAiMsg('');
-                        bubble.innerHTML = parseReferences(marked.parse(m.content));
+                        bubble.innerHTML = marked.parse(parseReferences(m.content));
                     }
                 });
             }
@@ -456,7 +468,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function addAiMsg(content) {
         const { body, bubble } = createMsgWrap('ai');
-        if (content) bubble.innerHTML = parseReferences(marked.parse(content));
+        if (content) bubble.innerHTML = marked.parse(parseReferences(content));
         bubble._body = body; // Store body ref for adding sources later
         return bubble;
     }
@@ -468,12 +480,10 @@ document.addEventListener('DOMContentLoaded', () => {
             <div class="msg-avatar-icon">🐀</div>
             <div class="msg-body">
                 <div class="msg-thinking">
-                    <div class="thinking-dots">
-                        <div class="thinking-dot"></div>
-                        <div class="thinking-dot"></div>
-                        <div class="thinking-dot"></div>
+                    <div class="thinking-content">
+                        <span class="thinking-dots"><span></span><span></span><span></span></span>
+                        <span class="thinking-label">Pensando</span>
                     </div>
-                    <span class="thinking-label">Pensando...</span>
                 </div>
             </div>`;
         chatMessages.appendChild(wrap);
@@ -498,21 +508,29 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function parseReferences(text) {
-        // Regex mejorada: detecta [ID: uuid], ID: uuid, [id: uuid], etc.
-        // Soporta UUIDs con y sin guiones por si el modelo es impreciso.
-        const idRegex = /(?:\[?[iI][dD]:\s*)([0-9a-fA-F-]{8,36})(?:\s*\]?)/g;
+        // Regex para capturar el nombre antes del ID: "Nombre de Receta [ID: uuid]"
+        const idRegex = /([^#*\[\n\r]+)?\s*\[[iI][dD]:\s*([0-9a-fA-F-]{8,36})\]/g;
         
-        return text.replace(idRegex, (match, id) => {
+        return text.replace(idRegex, (match, name, id) => {
             const cleanId = id.trim();
-            // Retornamos un botón más elegante que el anterior
-            return `<span class="recipe-ref" onclick="previewRecipe('${cleanId}')" 
-                          onmouseenter="this.style.transform='scale(1.1)'" 
-                          onmouseleave="this.style.transform='scale(1)'"
-                          title="Click para previsualizar receta">
-                        <span class="ref-icon">📖</span> Ver Receta
+            const displayName = name ? name.trim() : "Ver Receta";
+            
+            // Usamos data-id para delegación de eventos (más seguro que onclick)
+            return `<span class="recipe-ref" data-recipe-id="${cleanId}" 
+                          title="Ver detalles de: ${displayName}">
+                        <span class="ref-icon">📖</span> ${displayName}
                     </span>`;
         });
     }
+
+    // Delegación de eventos para las referencias del chat
+    chatMessages.addEventListener('click', (e) => {
+        const ref = e.target.closest('.recipe-ref');
+        if (ref) {
+            const id = ref.getAttribute('data-recipe-id');
+            if (id) window.previewRecipe(id);
+        }
+    });
 
     // ── handleChat — con buffer de streaming robusto ─────────────────────
 
@@ -529,7 +547,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!currentChatId) await createNewChat(false);
 
         sendChat.disabled = true;
-        chefStatus.textContent = 'Ratatui está pensando...';
+        chefStatus.textContent = 'Ratatui está pensando';
 
         const thinkingWrap = addThinkingWrap();
         let full = '';
@@ -589,11 +607,11 @@ document.addEventListener('DOMContentLoaded', () => {
                             thinkingWrap.remove();
                             aiDiv = addAiMsg('');
                             firstContent = false;
-                            chefStatus.textContent = 'Ratatui está escribiendo...';
+                            chefStatus.textContent = 'Ratatui está escribiendo';
                         }
                         full += line + '\n';
-                        // IMPORTANTE: parseReferences después de marked.parse
-                        aiDiv.innerHTML = parseReferences(marked.parse(full)) + '<span class="streaming-cursor"></span>';
+                        // IMPORTANTE: parseReferences ANTES de marked.parse
+                        aiDiv.innerHTML = marked.parse(parseReferences(full)) + '<span class="streaming-cursor"></span>';
                         
                         // Scroll natural: solo si el usuario no ha subido a leer
                         const threshold = 100;
@@ -622,13 +640,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Renderizado final limpio (sin cursor)
             if (aiDiv) {
-                aiDiv.innerHTML = parseReferences(marked.parse(full));
+                aiDiv.innerHTML = marked.parse(parseReferences(full));
                 attachSources(aiDiv, pendingSources);
             } else {
                 thinkingWrap.remove();
             }
 
-            chefStatus.textContent = 'Listo para más magia...';
+            chefStatus.textContent = 'Listo para más magia';
             loadChatHistory();
 
         } catch (e) {
@@ -636,7 +654,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const errBubble = addAiMsg('');
             errBubble.textContent = 'Ratatui se ha distraído. Comprueba que el servidor esté corriendo e inténtalo de nuevo.';
             errBubble.style.color = '#e74c3c';
-            chefStatus.textContent = 'Algo salió mal...';
+            chefStatus.textContent = 'Algo salió mal';
             console.error(e);
         } finally {
             sendChat.disabled = false;
@@ -680,13 +698,13 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!text) return;
         
         extractBtn.disabled = true;
-        extractBtn.textContent = 'Interpretando...';
+        extractBtn.textContent = 'Interpretando';
         
         extractionPreview.classList.remove('empty');
         extractionPreview.innerHTML = `
             <div class="extracting-loader"></div>
             <div style="padding: 1rem; color: #999; font-style: italic; text-align: center;">
-                Ratatui está leyendo tu receta y estructurando los sabores...
+                Ratatui está leyendo tu receta y estructurando los sabores
             </div>
         `;
         
