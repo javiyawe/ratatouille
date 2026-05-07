@@ -113,6 +113,17 @@
                         </div>
                     </footer>
                 </div>
+
+                <!-- Panel de Previsualización Lateral (Integrado en el layout del chat) -->
+                <div id="previewPanel" class="preview-panel">
+                    <div class="preview-header">
+                        <h2 id="previewTitle">Detalles de la Receta</h2>
+                        <button class="close-preview" id="closePreviewBtn">&times;</button>
+                    </div>
+                    <div id="previewContent" class="preview-content">
+                        <!-- Se llena dinámicamente -->
+                    </div>
+                </div>
             </div>
         </section>
     </main>
@@ -209,16 +220,6 @@
         </div>
     </div>
 
-    <!-- Panel de Previsualización Lateral -->
-    <div id="previewPanel" class="preview-panel">
-        <div class="preview-header">
-            <h2 id="previewTitle">Detalles de la Receta</h2>
-            <button class="close-preview" id="closePreviewBtn">&times;</button>
-        </div>
-        <div id="previewContent" class="preview-content">
-            <!-- Se llena dinámicamente -->
-        </div>
-    </div>
 
     <script src="/static/app.js"></script>
 </body>

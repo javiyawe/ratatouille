@@ -1221,22 +1221,22 @@ body {
 
 /* ─── Preview Panel (Side) ─── */
 .preview-panel {
-    position: fixed;
-    right: -450px;
-    top: var(--header-h);
-    bottom: 0;
-    width: 450px;
+    width: 0;
     background: var(--paper);
-    box-shadow: -10px 0 30px rgba(0,0,0,0.1);
-    z-index: 1001;
-    transition: right 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
     display: flex;
     flex-direction: column;
-    border-left: 1px solid var(--border);
+    border-left: 0 solid var(--border);
+    overflow: hidden;
+    position: relative;
+    flex-shrink: 0;
+    box-shadow: none;
 }
 
 .preview-panel.active {
-    right: 0;
+    width: 450px;
+    border-left-width: 1px;
+    box-shadow: -10px 0 30px rgba(0,0,0,0.05);
 }
 
 .preview-header {
@@ -1246,6 +1246,7 @@ body {
     justify-content: space-between;
     align-items: center;
     background: white;
+    min-width: 450px; /* Evita colapso de texto durante transición */
 }
 
 .preview-header h2 {
@@ -1265,7 +1266,92 @@ body {
 .preview-content {
     flex: 1;
     overflow-y: auto;
-    padding: 2rem;
+    padding: 2.5rem 2rem;
+    min-width: 450px; /* Evita colapso de texto durante transición */
+}
+
+/* Detalles extendidos en preview */
+.preview-content h1 {
+    font-family: var(--serif);
+    font-size: 2.2rem;
+    margin-bottom: 1rem;
+    line-height: 1.1;
+}
+
+.preview-meta {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+
+.preview-badge {
+    background: white;
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--accent);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    flex: 1;
+}
+
+.preview-badge span {
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    color: #999;
+    margin-bottom: 2px;
+}
+
+.preview-section {
+    margin-bottom: 2.5rem;
+}
+
+.preview-section h3 {
+    font-family: var(--serif);
+    font-size: 1.2rem;
+    color: var(--accent);
+    margin-bottom: 1rem;
+    border-bottom: 1px solid rgba(0,0,0,0.05);
+    padding-bottom: 0.3rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.preview-ing-list {
+    list-style: none;
+    padding: 0;
+}
+
+.preview-ing-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid rgba(0,0,0,0.02);
+    font-size: 0.95rem;
+}
+
+.preview-step-item {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+    line-height: 1.6;
+}
+
+.preview-step-n {
+    width: 24px;
+    height: 24px;
+    background: var(--accent);
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 0.8rem;
+    flex-shrink: 0;
 }
 
 /* ─── Streaming Cursor ─── */

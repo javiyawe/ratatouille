@@ -84,6 +84,7 @@ document.addEventListener('DOMContentLoaded', () => {
             viewChat.classList.remove('active');
             viewLibroBtn.classList.add('active');
             viewChatBtn.classList.remove('active');
+            previewPanel.classList.remove('active'); // Cerrar previsualización al salir del chat
             if (updateUrl) {
                 const url = currentSelectedId ? `/libro/recipe/${currentSelectedId}` : '/libro';
                 navigate(url);
@@ -222,7 +223,6 @@ document.addEventListener('DOMContentLoaded', () => {
     window.previewRecipe = async (id) => {
         let r = recipes.find(x => x._id === id);
         if (!r) {
-            // Si no está en la lista cargada, intentar buscarla
             try {
                 const res = await fetch(`/api/recipes?limit=500`);
                 const data = await res.json();
@@ -232,22 +232,51 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!r) return;
 
         previewContent.innerHTML = `
-            <div class="detail-section">
-                <p><i>${r.descripcion || ''}</i></p>
-                <div class="detail-grid" style="grid-template-columns: 1fr 1fr; margin-top: 1rem;">
-                    <div class="info-card"><label>Tiempo</label><strong>${r.tiempos?.total_minutos || '?'} min</strong></div>
-                    <div class="info-card"><label>Nivel</label><strong>${r.dificultad || 'Media'}</strong></div>
+            <h1>${r.titulo}</h1>
+            <p style="font-style: italic; color: #666; margin-bottom: 1.5rem; line-height: 1.5;">
+                ${r.descripcion || 'Una delicadeza culinaria sin descripción, preparada con amor.'}
+            </p>
+
+            <div class="preview-meta">
+                <div class="preview-badge">
+                    <span>Tiempo</span>
+                    ${r.tiempos?.total_minutos || '?'} min
                 </div>
-                <h3>Ingredientes</h3>
-                <ul style="padding-left: 1rem; font-size: 0.9rem;">
-                    ${r.ingredientes.map(i => `<li>${i.nombre}: ${i.cantidad} ${i.unidad}</li>`).join('')}
-                </ul>
-                <h3 style="margin-top: 1.5rem;">Pasos</h3>
-                <div style="font-size: 0.9rem;">
-                    ${r.pasos.map((s,i) => `<p style="margin-bottom:0.5rem"><b>${i+1}.</b> ${s}</p>`).join('')}
+                <div class="preview-badge">
+                    <span>Porciones</span>
+                    ${r.porciones || '?'} pers.
                 </div>
-                <button class="btn-primary" style="width:100%; margin-top:1rem;" onclick="viewRecipe('${id}')">Ver receta completa</button>
+                <div class="preview-badge">
+                    <span>Nivel</span>
+                    ${r.dificultad || 'Media'}
+                </div>
             </div>
+
+            <div class="preview-section">
+                <h3>Ingredientes</h3>
+                <ul class="preview-ing-list">
+                    ${r.ingredientes.map(i => `
+                        <li class="preview-ing-item">
+                            <span>${i.nombre}</span>
+                            <b>${i.cantidad} ${i.unidad}</b>
+                        </li>
+                    `).join('')}
+                </ul>
+            </div>
+
+            <div class="preview-section">
+                <h3>Instrucciones detalladas</h3>
+                ${r.pasos.map((s, i) => `
+                    <div class="preview-step-item">
+                        <div class="preview-step-n">${i + 1}</div>
+                        <div class="preview-step-t">${s}</div>
+                    </div>
+                `).join('')}
+            </div>
+
+            <button class="btn-primary" style="width:100%; margin-top:1rem; padding: 1rem;" onclick="viewRecipe('${id}')">
+                Ver en el libro completo
+            </button>
         `;
         previewPanel.classList.add('active');
     };
@@ -404,8 +433,19 @@ document.addEventListener('DOMContentLoaded', () => {
         wrap.appendChild(avatar);
         wrap.appendChild(body);
         chatMessages.appendChild(wrap);
-        chatMessages.scrollTop = chatMessages.scrollHeight;
+        
+        // Solo auto-scroll si estamos cerca del final
+        scrollToBottomIfNear();
+        
         return { wrap, body, bubble };
+    }
+
+    function scrollToBottomIfNear() {
+        const threshold = 150;
+        const isNearBottom = chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight < threshold;
+        if (isNearBottom) {
+            chatMessages.scrollTo({ top: chatMessages.scrollHeight, behavior: 'smooth' });
+        }
     }
 
     function addUserMsg(content) {
@@ -437,7 +477,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
             </div>`;
         chatMessages.appendChild(wrap);
-        chatMessages.scrollTop = chatMessages.scrollHeight;
+        scrollToBottomIfNear();
         return wrap;
     }
 
@@ -547,9 +587,14 @@ document.addEventListener('DOMContentLoaded', () => {
                         // IMPORTANTE: parseReferences después de marked.parse
                         aiDiv.innerHTML = parseReferences(marked.parse(full)) + '<span class="streaming-cursor"></span>';
                         
-                        // Scroll de precisión al cursor de escritura
-                        const cursor = aiDiv.querySelector('.streaming-cursor');
-                        if (cursor) cursor.scrollIntoView({ block: 'end', behavior: 'auto' });
+                        // Scroll natural: solo si el usuario no ha subido a leer
+                        const threshold = 100;
+                        const isNearBottom = chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight < threshold;
+                        
+                        if (isNearBottom) {
+                            const cursor = aiDiv.querySelector('.streaming-cursor');
+                            if (cursor) cursor.scrollIntoView({ block: 'end', behavior: 'auto' });
+                        }
                     }
                 }
             }
