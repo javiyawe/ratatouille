@@ -255,9 +255,11 @@ Tu objetivo es ser el asistente culinario definitivo. Debes usar TUS herramienta
 
 ═══ COMPORTAMIENTO COHERENTE (CRÍTICO) ═══
 1. **Analiza**: Entiende qué ingredientes o platos pide el usuario.
-2. **Busca**: Usa `search_recipes` para encontrar coincidencias. Si no hay una exacta, busca ingredientes similares.
-3. **Cita**: Cada vez que menciones una receta que has encontrado en las herramientas, DEBES escribir su ID exacto entre corchetes pegado al nombre. Ejemplo: "Te sugiero el Risotto de Setas [ID: 550e8400-e29b-41d4-a716-446655440000]".
-4. **No Alucines**: Si el libro no tiene lo que buscas, dilo claramente: "No tengo esa receta exacta en mi libro, pero puedo crear una para ti basada en mi estilo".
+2. **Busca**: Usa `search_recipes` para encontrar coincidencias.
+3. **Cita (REGLA DE ORO)**: Debes citar la receta principal que estés usando en el TÍTULO de tu respuesta o en la primera mención.
+   - Formato obligatorio: `[ID: id_exacto_uuid]`.
+   - Ejemplo: "### 👨‍🍳 El Proceso Artístico del Bibimbap [ID: 550e8400-e29b-41d4-a716-446655440000]"
+4. **Foco**: Si el usuario te pide trabajar sobre UNA receta específica, mantén el contexto y no mezcles títulos de otras recetas.
 
 ═══ REGLAS DE ORO ═══
 - Sé elegante, profesional y usa términos franceses ("Mise en place", "S'il vous plaît", "¡Magnifique!").
@@ -267,8 +269,8 @@ Tu objetivo es ser el asistente culinario definitivo. Debes usar TUS herramienta
 ═══ ESTRUCTURA DE RESPUESTA ═══
 Usa Markdown con los siguientes encabezados:
 1. **L'Inspiration**: Párrafo sugerente.
-2. **### 🛒 Mise en Place**: Lista de ingredientes.
-3. **### 👨‍🍳 El Proceso Artístico**: Pasos numerados.
+2. **### 🛒 Mise en Place [ID: id_de_la_receta]**: Lista de ingredientes.
+3. **### 👨‍🍳 El Proceso Artístico**: Pasos numerados claros y detallados.
 4. **💡 Le Petit Secret**: Truco final.
 """
 
@@ -483,10 +485,10 @@ async def chat(req: ChatRequest):
                 "content": (
                     "¡ATENCIÓN CHEF! Has encontrado estas recetas REALES en tu libro:\n"
                     f"{sources_info}\n\n"
-                    "REGLA CRÍTICA: Debes citar cada receta usando EXACTAMENTE el formato [ID: id_de_la_receta]. "
-                    "Hazlo justo después de mencionar el nombre de la receta. "
-                    "Ejemplo: 'Puedes usar mi Tortilla Española [ID: abc-123]'. "
-                    "NO omitas los corchetes ni el prefijo ID:."
+                    "REGLA CRÍTICA DE CITACIÓN:\n"
+                    "1. Cita el ID solo la primera vez que nombres la receta o en el título de su sección.\n"
+                    "2. NO incluyas el [ID: ...] en cada paso del proceso o en cada ingrediente.\n"
+                    "3. Asegúrate de usar el título correcto. Si el usuario te pide Bibimbap, no uses el título de otra receta (como Arroz Chaufa) por error."
                 )
             })
 
@@ -502,7 +504,21 @@ async def chat(req: ChatRequest):
         # Persistir historial
         history.append({"role": "user",      "content": req.message})
         history.append({"role": "assistant", "content": full_ai})
-        meta = {"title": req.message[:40], "updated_at": int(time.time())}
+        
+        # Determinar el título: si es nuevo o el título es genérico, resumir la primera pregunta
+        if not chat_data["documents"] or chat_data["metadatas"][0].get("title") == "Nueva conversación":
+            try:
+                t_msg = await llm([
+                    {"role": "system", "content": "Genera un título de máximo 4 palabras para esta consulta culinaria. Solo el texto del título, sin comillas ni puntos."},
+                    {"role": "user", "content": req.message}
+                ], temperature=0.1)
+                chat_title = t_msg.get("content", req.message[:30]).strip().strip('"').strip('.')
+            except:
+                chat_title = req.message[:30]
+        else:
+            chat_title = chat_data["metadatas"][0].get("title", "Chat")
+
+        meta = {"title": chat_title, "updated_at": int(time.time())}
         if not chat_data["ids"]:
             get_chat_col().add(
                 ids=[chat_id],
