@@ -9,8 +9,10 @@ Arranque:
 import asyncio
 import json
 import re
+import sqlite3
 import uuid
 import time
+from pathlib import Path
 from typing import Optional
 
 import httpx
@@ -51,11 +53,51 @@ def get_col():
         metadata={"hnsw:space": "cosine"},
     )
 
-def get_chat_col():
-    return _chroma.get_or_create_collection(
-        name="chats",
-        metadata={"hnsw:space": "cosine"},
-    )
+# ─────────────────────────── Chat Storage (SQLite) ────────────────────
+# Los chats no necesitan búsqueda vectorial — SQLite es más rápido y limpio.
+
+_CHAT_DB = Path("./chats.db")
+
+def _chat_conn() -> sqlite3.Connection:
+    conn = sqlite3.connect(str(_CHAT_DB), check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+def _init_chat_db() -> None:
+    with _chat_conn() as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS chats (
+                id         TEXT PRIMARY KEY,
+                title      TEXT NOT NULL DEFAULT 'Nueva conversación',
+                history    TEXT NOT NULL DEFAULT '[]',
+                updated_at INTEGER NOT NULL DEFAULT 0
+            )
+        """)
+        conn.commit()
+
+_init_chat_db()
+
+# Migración única: importar chats existentes de ChromaDB → SQLite
+def _migrate_chats_from_chroma() -> None:
+    try:
+        col = _chroma.get_collection("chats")
+        data = col.get(include=["documents", "metadatas"])
+        if not data["ids"]:
+            return
+        with _chat_conn() as conn:
+            for i, cid in enumerate(data["ids"]):
+                title      = data["metadatas"][i].get("title", "Chat")
+                updated_at = data["metadatas"][i].get("updated_at", 0)
+                history    = data["documents"][i] if data["documents"] else "[]"
+                conn.execute(
+                    "INSERT OR IGNORE INTO chats (id, title, history, updated_at) VALUES (?, ?, ?, ?)",
+                    (cid, title, history, updated_at),
+                )
+            conn.commit()
+    except Exception:
+        pass   # la colección no existe o ya se migró
+
+_migrate_chats_from_chroma()
 
 # ─────────────────────────── Helpers Ollama ───────────────────────────
 
@@ -536,7 +578,8 @@ async def _process_chat(
     chat_id: str,
     message: str,
     history: list,
-    chat_data: dict,
+    is_new: bool,
+    old_title: str,
     out: asyncio.Queue,
 ) -> None:
     """
@@ -643,12 +686,8 @@ async def _process_chat(
         if full_ai:
             history.append({"role": "assistant", "content": full_ai, "sources": _src})
 
-        is_new    = not chat_data["ids"]
-        old_title = chat_data["metadatas"][0].get("title", "") if chat_data["metadatas"] else ""
-
         if is_new or old_title in ("", "Nueva conversación"):
             try:
-                # Usar pregunta + inicio de respuesta para un título más descriptivo
                 ctx = f"Pregunta: {message}"
                 if full_ai:
                     ctx += f"\nRespuesta: {full_ai[:300]}"
@@ -666,25 +705,27 @@ async def _process_chat(
         else:
             chat_title = old_title
 
-        meta = {"title": chat_title, "updated_at": int(time.time())}
         try:
-            if is_new:
-                get_chat_col().add(
-                    ids=[chat_id],
-                    documents=[json.dumps(history, ensure_ascii=False)],
-                    metadatas=[meta],
-                )
-            else:
-                get_chat_col().update(
-                    ids=[chat_id],
-                    documents=[json.dumps(history, ensure_ascii=False)],
-                    metadatas=[meta],
-                )
+            with _chat_conn() as conn:
+                if is_new:
+                    conn.execute(
+                        "INSERT INTO chats (id, title, history, updated_at) VALUES (?, ?, ?, ?)",
+                        (chat_id, chat_title,
+                         json.dumps(history, ensure_ascii=False),
+                         int(time.time())),
+                    )
+                else:
+                    conn.execute(
+                        "UPDATE chats SET title=?, history=?, updated_at=? WHERE id=?",
+                        (chat_title,
+                         json.dumps(history, ensure_ascii=False),
+                         int(time.time()), chat_id),
+                    )
+                conn.commit()
             await emit("title", value=chat_title)
         except Exception:
             pass
 
-        # Señalizar fin del stream y limpiar registro
         await out.put(None)
         _active.pop(chat_id, None)
 
@@ -694,15 +735,25 @@ async def chat(req: ChatRequest):
     chat_id = req.chat_id or str(uuid.uuid4())
 
     if chat_id not in _active:
-        chat_data = get_chat_col().get(ids=[chat_id], include=["documents", "metadatas"])
-        history   = json.loads(chat_data["documents"][0]) if chat_data["documents"] else []
+        with _chat_conn() as conn:
+            row = conn.execute(
+                "SELECT title, history FROM chats WHERE id=?", (chat_id,)
+            ).fetchone()
+        if row:
+            history   = json.loads(row["history"])
+            is_new    = False
+            old_title = row["title"]
+        else:
+            history   = []
+            is_new    = True
+            old_title = ""
+
         out: asyncio.Queue = asyncio.Queue()
         task = asyncio.create_task(
-            _process_chat(chat_id, req.message, history, chat_data, out)
+            _process_chat(chat_id, req.message, history, is_new, old_title, out)
         )
         _active[chat_id] = (task, out)
     else:
-        # Chat ya procesándose — suscribir al stream existente
         _, out = _active[chat_id]
 
     async def stream():
@@ -714,7 +765,7 @@ async def chat(req: ChatRequest):
                 break
             if item is None:
                 break
-            yield item   # ya es un string SSE formateado
+            yield item
 
     return StreamingResponse(stream(), media_type="text/event-stream")
 
@@ -722,55 +773,52 @@ async def chat(req: ChatRequest):
 
 @app.get("/api/chats")
 async def list_chats():
-    data = get_chat_col().get(include=["metadatas"])
-    chats = [
-        {
-            "id": cid,
-            "title": data["metadatas"][i].get("title", "Chat"),
-            "updated_at": data["metadatas"][i].get("updated_at", 0),
-        }
-        for i, cid in enumerate(data["ids"])
-    ]
-    chats.sort(key=lambda x: x["updated_at"], reverse=True)
-    return {"chats": chats}
+    with _chat_conn() as conn:
+        rows = conn.execute(
+            "SELECT id, title, updated_at FROM chats ORDER BY updated_at DESC"
+        ).fetchall()
+    return {"chats": [dict(r) for r in rows]}
 
 @app.post("/api/chats")
 async def create_chat(req: ChatSessionCreate):
     chat_id = str(uuid.uuid4())
-    get_chat_col().add(
-        ids=[chat_id],
-        documents=[json.dumps([], ensure_ascii=False)],
-        metadatas=[{"title": req.title, "updated_at": int(time.time())}],
-    )
+    with _chat_conn() as conn:
+        conn.execute(
+            "INSERT INTO chats (id, title, history, updated_at) VALUES (?, ?, '[]', ?)",
+            (chat_id, req.title, int(time.time())),
+        )
+        conn.commit()
     return {"id": chat_id, "title": req.title}
 
 @app.get("/api/chats/{chat_id}")
 async def get_chat_history(chat_id: str):
-    data = get_chat_col().get(ids=[chat_id])
-    if not data["ids"]:
+    with _chat_conn() as conn:
+        row = conn.execute(
+            "SELECT history FROM chats WHERE id=?", (chat_id,)
+        ).fetchone()
+    if not row:
         raise HTTPException(404)
-    return {"id": chat_id, "history": json.loads(data["documents"][0])}
+    return {"id": chat_id, "history": json.loads(row["history"])}
 
 @app.put("/api/chats/{chat_id}")
 async def rename_chat(chat_id: str, req: UpdateChatTitleRequest):
-    data = get_chat_col().get(ids=[chat_id], include=["documents", "metadatas"])
-    if not data["ids"]:
+    with _chat_conn() as conn:
+        cur = conn.execute(
+            "UPDATE chats SET title=? WHERE id=?",
+            (req.title.strip()[:120], chat_id),
+        )
+        conn.commit()
+    if cur.rowcount == 0:
         raise HTTPException(404)
-    meta = dict(data["metadatas"][0])
-    meta["title"] = req.title.strip()[:120]
-    get_chat_col().update(
-        ids=[chat_id],
-        documents=data["documents"],
-        metadatas=[meta],
-    )
-    return {"id": chat_id, "title": meta["title"]}
+    return {"id": chat_id, "title": req.title.strip()[:120]}
 
 @app.delete("/api/chats/{chat_id}")
 async def delete_chat(chat_id: str):
-    data = get_chat_col().get(ids=[chat_id])
-    if not data["ids"]:
+    with _chat_conn() as conn:
+        cur = conn.execute("DELETE FROM chats WHERE id=?", (chat_id,))
+        conn.commit()
+    if cur.rowcount == 0:
         raise HTTPException(404)
-    get_chat_col().delete(ids=[chat_id])
     return {"status": "deleted"}
 
 # ─── Gestión de Recetas ───────────────────────────────────────────────
