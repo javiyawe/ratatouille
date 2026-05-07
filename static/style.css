@@ -89,22 +89,77 @@ body {
     font-weight: 600;
 }
 
-/* --- View Management --- */
+/* --- Layout modes --- */
 .app-viewport {
     flex: 1;
     overflow: hidden;
-    position: relative;
+    display: flex;   /* flex container para los paneles */
 }
 
 .view-panel {
-    position: absolute;
-    top: 0; left: 0;
-    width: 100%; height: 100%;
+    height: 100%;
+    overflow: hidden;
     display: none;
+    flex-shrink: 0;
 }
 
-.view-panel.active {
+/* Modo libro: solo el panel de recetario */
+.mode-libro #viewLibro { display: block; flex: 1; }
+
+/* Modo chat: solo el panel del chef */
+.mode-chat  #viewChat  { display: block; flex: 1; }
+
+/* Modo dividido: ambos paneles lado a lado */
+.mode-split #viewLibro {
     display: block;
+    width: 44%;
+    min-width: 340px;
+    border-right: 1px solid var(--border);
+}
+.mode-split #viewChat {
+    display: block;
+    flex: 1;
+    min-width: 260px;
+}
+
+/* Ajustes en modo dividido */
+.mode-split .sidebar        { width: 210px; }
+.mode-split .chat-sidebar   { display: none; }
+.mode-split .preview-panel  { display: none !important; }
+
+/* Botones de layout en el nav */
+.layout-switcher {
+    background: #f0f0f0;
+    padding: 4px;
+    border-radius: 30px;
+    gap: 2px;
+}
+
+.layout-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: none;
+    background: none;
+    padding: 0.5rem 0.9rem;
+    border-radius: 22px;
+    cursor: pointer;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: #888;
+    transition: all 0.18s ease;
+    white-space: nowrap;
+}
+
+.layout-btn.active {
+    background: white;
+    color: var(--accent);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+.layout-btn:hover:not(.active) {
+    color: #555;
+    background: rgba(0,0,0,0.04);
 }
 
 /* --- Recetario (Split View) --- */
