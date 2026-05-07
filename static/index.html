@@ -128,20 +128,38 @@
         </section>
     </main>
 
-    <!-- MODAL: AÑADIR RECETA -->
+    <!-- MODAL: AÑADIR RECETA (Rediseñado para Previsualización en Vivo) -->
     <div id="addModal" class="modal-overlay">
-        <div class="modal-box">
+        <div class="modal-box modal-large">
             <header class="modal-header">
-                <h2>Ingesta de Alquimia</h2>
+                <div>
+                    <h2>Ingesta de Alquimia</h2>
+                    <p class="subtitle">Ratatui transformará cualquier texto en una obra maestra estructurada</p>
+                </div>
                 <button class="close-modal">&times;</button>
             </header>
             <div class="modal-body">
-                <p class="help-text">Pega el texto de cualquier receta. Ratatui la interpretará y la guardará en tu libro.</p>
-                <textarea id="rawRecipeText" placeholder="Ej: Paella valenciana para 4 personas..."></textarea>
-                <div id="extractionPreview" class="extract-preview"></div>
+                <div class="add-recipe-grid">
+                    <!-- Columna de Entrada -->
+                    <div class="add-input-side">
+                        <label class="form-label">Texto de la Receta</label>
+                        <textarea id="rawRecipeText" class="input-premium" placeholder="Pega aquí tu receta (nombre, ingredientes, pasos...)" style="height: 100%; min-height: 400px;"></textarea>
+                    </div>
+
+                    <!-- Columna de Previsualización en Vivo -->
+                    <div class="add-preview-side">
+                        <label class="form-label">Previsualización de Ratatui</label>
+                        <div id="extractionPreview" class="live-recipe-preview empty">
+                            <div class="empty-preview-state">
+                                <span class="magical-sparkle">✨</span>
+                                <p>Esperando ingredientes para empezar la magia...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
             <footer class="modal-footer">
-                <button id="extractBtn" class="btn-secondary">Analizar Texto</button>
+                <button id="extractBtn" class="btn-magic">✨ Analizar y Estructurar</button>
                 <button id="saveRecipeBtn" class="btn-primary" style="display:none">Guardar en el Libro</button>
             </footer>
         </div>

@@ -498,11 +498,19 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function parseReferences(text) {
-        // Busca patrones como [ID: id] o ID: id y los convierte en badges interactivos
-        // El regex ahora es extremadamente robusto para capturar cualquier ID razonable
-        return text.replace(/(?:\[ID:\s*|ID:\s*)([0-9a-fA-F-]{4,40})(?:\s*\])?/g, (match, id) => {
+        // Regex mejorada: detecta [ID: uuid], ID: uuid, [id: uuid], etc.
+        // Soporta UUIDs con y sin guiones por si el modelo es impreciso.
+        const idRegex = /(?:\[?[iI][dD]:\s*)([0-9a-fA-F-]{8,36})(?:\s*\]?)/g;
+        
+        return text.replace(idRegex, (match, id) => {
             const cleanId = id.trim();
-            return `<span class="recipe-ref" onclick="previewRecipe('${cleanId}')" title="Haz clic para ver detalles de la receta">📖 Ver receta</span>`;
+            // Retornamos un botón más elegante que el anterior
+            return `<span class="recipe-ref" onclick="previewRecipe('${cleanId}')" 
+                          onmouseenter="this.style.transform='scale(1.1)'" 
+                          onmouseleave="this.style.transform='scale(1)'"
+                          title="Click para previsualizar receta">
+                        <span class="ref-icon">📖</span> Ver Receta
+                    </span>`;
         });
     }
 
@@ -673,7 +681,14 @@ document.addEventListener('DOMContentLoaded', () => {
         
         extractBtn.disabled = true;
         extractBtn.textContent = 'Interpretando...';
-        extractionPreview.innerHTML = '<div class="extract-item"><i>Ratatui está leyendo tu receta...</i></div>';
+        
+        extractionPreview.classList.remove('empty');
+        extractionPreview.innerHTML = `
+            <div class="extracting-loader"></div>
+            <div style="padding: 1rem; color: #999; font-style: italic; text-align: center;">
+                Ratatui está leyendo tu receta y estructurando los sabores...
+            </div>
+        `;
         
         let fullJSON = '';
         try {
@@ -695,46 +710,74 @@ document.addEventListener('DOMContentLoaded', () => {
                 const chunk = decoder.decode(value, { stream: true });
                 fullJSON += chunk;
                 
-                // Mostrar progreso crudo con efecto "escáner"
-                extractionPreview.innerHTML = `
-                    <div class="extract-item scann-effect">
-                        <b>Ratatui está analizando...</b><br>
-                        <small style="font-family:monospace; opacity:0.5; font-size:0.7rem;">${fullJSON.slice(-80)}</small>
-                    </div>
-                `;
+                // Efecto visual de "escritura" en la previsualización
+                const lastBit = fullJSON.slice(-50).replace(/["{}[\]]/g, '');
+                if (lastBit.length > 5) {
+                    extractionPreview.innerHTML = `
+                        <div class="extracting-loader"></div>
+                        <div style="opacity: 0.6; font-size: 0.85rem;">
+                            <b>Analizando componentes...</b><br>
+                            <span style="font-family: monospace;">> ${lastBit}</span>
+                        </div>
+                    `;
+                }
             }
 
             // Al terminar, intentamos extraer el JSON de forma robusta
             fullJSON = fullJSON.trim();
             const jsonMatch = fullJSON.match(/\{[\s\S]*\}/);
-            if (jsonMatch) {
-                fullJSON = jsonMatch[0];
-            }
+            if (jsonMatch) fullJSON = jsonMatch[0];
             
             extractedRecipe = JSON.parse(fullJSON);
             
-            // Normalizar por si acaso
             if (!extractedRecipe.titulo || extractedRecipe.titulo === 'string') {
                 throw new Error('La IA no pudo estructurar la receta correctamente.');
             }
             
+            // Renderizado final de PREVIEW ESTÉTICO
             extractionPreview.innerHTML = `
-                <div class="extract-item"><b>Título:</b> ${extractedRecipe.titulo}</div>
-                <div class="extract-item"><b>Descripción:</b> ${extractedRecipe.descripcion}</div>
-                <div class="extract-item"><b>Ingredientes detectados:</b> ${extractedRecipe.ingredientes?.length || 0}</div>
-                <div class="extract-item"><b>Pasos detectados:</b> ${extractedRecipe.pasos?.length || 0}</div>
+                <div class="live-preview-content">
+                    <h2>${extractedRecipe.titulo}</h2>
+                    <p class="desc">${extractedRecipe.descripcion || ''}</p>
+                    
+                    <div class="preview-meta" style="margin-bottom: 1.5rem;">
+                        <div class="preview-badge"><span>Nivel</span>${extractedRecipe.dificultad || 'Media'}</div>
+                        <div class="preview-badge"><span>Tiempo</span>${extractedRecipe.tiempos?.total_minutos || '?'} min</div>
+                    </div>
+
+                    <h4>Ingredientes</h4>
+                    <ul class="preview-ing-list">
+                        ${(extractedRecipe.ingredientes || []).map(i => `
+                            <li class="preview-ing-item">
+                                <span>${i.nombre}</span>
+                                <b>${i.cantidad} ${i.unidad}</b>
+                            </li>
+                        `).join('')}
+                    </ul>
+
+                    <h4>Preparación</h4>
+                    <div class="preview-steps">
+                        ${(extractedRecipe.pasos || []).map((s, i) => `
+                            <div class="preview-step-item">
+                                <div class="preview-step-n">${i+1}</div>
+                                <div class="preview-step-t" style="font-size: 0.85rem;">${s}</div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
             `;
             saveRecipeBtn.style.display = 'block';
         } catch(e) { 
+            extractionPreview.classList.add('empty');
             extractionPreview.innerHTML = `
-                <div class="extract-item" style="color:#e74c3c">
-                    <b>Ratatui ha tenido un contratiempo:</b><br>
-                    No he podido interpretar bien la receta. Por favor, asegúrate de que el texto sea claro o intenta copiarlo de nuevo.
+                <div class="empty-preview-state" style="color:#e74c3c">
+                    <b>Ouch! Contretemps...</b><br>
+                    No he podido interpretar bien la receta. Prueba a simplificar el texto.
                 </div>`;
             console.error(e);
         } finally { 
             extractBtn.disabled = false; 
-            extractBtn.textContent = 'Analizar Texto'; 
+            extractBtn.textContent = '✨ Analizar y Estructurar'; 
         }
     };
 
