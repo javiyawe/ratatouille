@@ -5,7 +5,7 @@ import chromadb
 import httpx
 
 OLLAMA_URL  = "http://localhost:11434"
-EMBED_MODEL = "bge-m3:latest"
+EMBED_MODEL = "nomic-embed-text:latest"
 CHROMA_PATH = "./chroma_db"
 
 # 50 Recetas Maestras con campos completos

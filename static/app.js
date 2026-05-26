@@ -46,6 +46,97 @@ document.addEventListener('DOMContentLoaded', () => {
         return `${q} ${u}`;
     }
 
+    // Custom Toast notifications
+    function showToast(message, type = 'info') {
+        let toastContainer = document.querySelector('.toast-container');
+        if (!toastContainer) {
+            toastContainer = document.createElement('div');
+            toastContainer.className = 'toast-container';
+            document.body.appendChild(toastContainer);
+        }
+
+        const toast = document.createElement('div');
+        toast.className = `toast toast-${type}`;
+
+        let icon = 'ℹ️';
+        if (type === 'success') icon = '✅';
+        else if (type === 'error') icon = '❌';
+        else if (type === 'warning') icon = '⚠️';
+
+        toast.innerHTML = `
+            <span class="toast-icon">${icon}</span>
+            <span class="toast-msg">${message}</span>
+        `;
+        toastContainer.appendChild(toast);
+
+        // Slide in
+        setTimeout(() => {
+            toast.classList.add('show');
+        }, 10);
+
+        // Slide out and remove
+        setTimeout(() => {
+            toast.classList.remove('show');
+            toast.classList.add('hide');
+            setTimeout(() => {
+                toast.remove();
+            }, 400); // Wait for transition hide (0.4s) to finish
+        }, 4000);
+    }
+
+    // Custom Confirm Dialog
+    function showConfirm(message, onConfirm, onCancel = null) {
+        const overlay = document.createElement('div');
+        overlay.className = 'confirm-overlay';
+        
+        overlay.innerHTML = `
+            <div class="confirm-box">
+                <div class="confirm-body">
+                    <span class="confirm-icon">⚠️</span>
+                    <span class="confirm-text">${message}</span>
+                </div>
+                <div class="confirm-footer">
+                    <button class="btn-confirm-cancel">Cancelar</button>
+                    <button class="btn-confirm-ok">Confirmar</button>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(overlay);
+        document.body.classList.add('modal-open');
+        
+        // Slide / fade in
+        setTimeout(() => {
+            overlay.classList.add('show');
+        }, 10);
+        
+        const close = (confirmed) => {
+            overlay.classList.remove('show');
+            overlay.classList.add('hide');
+            document.body.classList.remove('modal-open');
+            setTimeout(() => {
+                overlay.remove();
+                if (confirmed) {
+                    if (onConfirm) onConfirm();
+                } else {
+                    if (onCancel) onCancel();
+                }
+            }, 300); // Wait for transition hide (0.25s) to finish
+        };
+        
+        overlay.querySelector('.btn-confirm-cancel').onclick = () => close(false);
+        overlay.querySelector('.btn-confirm-ok').onclick = () => close(true);
+        
+        // Close on escape key
+        const handleEscape = (e) => {
+            if (e.key === 'Escape') {
+                document.removeEventListener('keydown', handleEscape);
+                close(false);
+            }
+        };
+        document.addEventListener('keydown', handleEscape);
+    }
+
     // --- Boot ---
     // Aplicar layout guardado inmediatamente (antes de cargar datos)
     setLayout(currentLayout, false);
@@ -418,17 +509,22 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     window.deleteChat = async (id) => {
-        if (!confirm('¿Borrar esta conversación?')) return;
-        try {
-            await fetch(`/api/chats/${id}`, { method: 'DELETE' });
-            if (currentChatId === id) {
-                currentChatId   = null;
-                displayedChatId = null;
-                localStorage.removeItem('last_chat_id');
-                renderWelcome();
+        showConfirm('¿Borrar esta conversación?', async () => {
+            try {
+                await fetch(`/api/chats/${id}`, { method: 'DELETE' });
+                if (currentChatId === id) {
+                    currentChatId   = null;
+                    displayedChatId = null;
+                    localStorage.removeItem('last_chat_id');
+                    renderWelcome();
+                }
+                loadChatHistory();
+                showToast('Conversación eliminada', 'success');
+            } catch(e) {
+                console.error(e);
+                showToast('Error al eliminar la conversación.', 'error');
             }
-            loadChatHistory();
-        } catch(e) { console.error(e); }
+        });
     };
 
     // polling activo para respuestas pendientes: chatId → intervalId
@@ -652,15 +748,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function attachSources(bubble, sources) {
-        if (!sources?.length) return;
-        const body = bubble._body || bubble.parentElement;
-        const div = document.createElement('div');
-        div.className = 'msg-sources';
-        div.innerHTML = sources.map(s => {
-            const label = s.num != null ? `[${s.num}] ${s.titulo}` : s.titulo;
-            return `<button class="source-pill" onclick="previewRecipe('${s.id}')">📖 ${label}</button>`;
-        }).join('');
-        body.appendChild(div);
+        // Desactivado a petición del usuario: quitadas las referencias de abajo en el chat
+        return;
     }
 
     /**
@@ -881,9 +970,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (sidebar) sidebar.style.display = sidebar.style.display === 'none' ? '' : 'none';
     });
     
-    addRecipeBtn.onclick = () => addModal.style.display = 'flex';
+    addRecipeBtn.onclick = () => { addModal.classList.add('show'); document.body.classList.add('modal-open'); };
     document.getElementById('addIngBtn').onclick = () => window.addIngRow();
-    closeModal.onclick = () => addModal.style.display = 'none';
+    closeModal.onclick = () => { addModal.classList.remove('show'); document.body.classList.remove('modal-open'); };
 
     extractBtn.onclick = async () => {
         const text = rawRecipeText.value;
@@ -996,30 +1085,38 @@ document.addEventListener('DOMContentLoaded', () => {
         saveRecipeBtn.textContent = 'Guardando...';
         try {
             await fetch('/api/recipes/save', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({recipe:extractedRecipe})});
-            addModal.style.display = 'none';
+            addModal.classList.remove('show');
+            document.body.classList.remove('modal-open');
             loadRecipes();
             // Limpiar modal
             rawRecipeText.value = '';
             extractionPreview.innerHTML = '';
             saveRecipeBtn.style.display = 'none';
-        } catch(e) { alert('Error al guardar.'); }
-        finally { saveRecipeBtn.disabled = false; saveRecipeBtn.textContent = 'Guardar en el Libro'; }
+            showToast('Receta guardada con éxito', 'success');
+        } catch(e) { 
+            showToast('Error al guardar la receta.', 'error');
+        } finally { 
+            saveRecipeBtn.disabled = false; 
+            saveRecipeBtn.textContent = 'Guardar en el Libro'; 
+        }
     };
 
     window.deleteRecipe = async (id) => {
-        if (!confirm('¿Eliminar esta receta del libro?')) return;
-        try {
-            const res = await fetch(`/api/recipes/${id}`, { method: 'DELETE' });
-            if (!res.ok) throw new Error();
-            recipes    = recipes.filter(r => r._id !== id);
-            allRecipes = allRecipes.filter(r => r._id !== id);
-            currentSelectedId = null;
-            recipeDetail.innerHTML = '<div class="empty-state"><div class="empty-icon">🍲</div><p>Elige una receta del libro para comenzar la magia.</p></div>';
-            renderList();
-            updateStats();
-        } catch (e) {
-            alert('Error al eliminar la receta.');
-        }
+        showConfirm('¿Eliminar esta receta del libro?', async () => {
+            try {
+                const res = await fetch(`/api/recipes/${id}`, { method: 'DELETE' });
+                if (!res.ok) throw new Error();
+                recipes    = recipes.filter(r => r._id !== id);
+                allRecipes = allRecipes.filter(r => r._id !== id);
+                currentSelectedId = null;
+                recipeDetail.innerHTML = '<div class="empty-state"><div class="empty-icon">🍲</div><p>Elige una receta del libro para comenzar la magia.</p></div>';
+                renderList();
+                updateStats();
+                showToast('Receta eliminada con éxito', 'success');
+            } catch (e) {
+                showToast('Error al eliminar la receta.', 'error');
+            }
+        });
     };
 
     window.toggleFav = (id, el) => {
@@ -1083,7 +1180,7 @@ document.addEventListener('DOMContentLoaded', () => {
         renderIngList(r.ingredientes || []);
         document.getElementById('editSteps').value    = (r.pasos || []).join('\n');
 
-        document.getElementById('editModal').style.display = 'flex';
+        document.getElementById('editModal').classList.add('show');
         document.getElementById('magicInstructions').value = '';
         
         document.getElementById('saveEditBtn').onclick = () => saveEdit(id);
@@ -1127,9 +1224,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (r.tipo_cocina) document.getElementById('editCuisine').value = r.tipo_cocina;
                 document.getElementById('editSteps').value = (r.pasos || []).join('\n');
                 document.getElementById('magicInstructions').value = '';
+                showToast('¡Magia aplicada con éxito!', 'success');
             }
         } catch(e) {
-            alert('Ratatui se ha liado con la magia. Intenta de nuevo.');
+            showToast('Ratatui se ha liado con la magia. Intenta de nuevo.', 'error');
         } finally {
             magicBtn.disabled = false;
             magicBtn.textContent = 'Aplicar Magia';
@@ -1159,15 +1257,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 body: JSON.stringify({ recipe: updatedRecipe })
             });
             if (res.ok) {
-                document.getElementById('editModal').style.display = 'none';
+                document.getElementById('editModal').classList.remove('show');
                 await loadRecipes();
                 await viewRecipe(id, false); // Refrescar vista
+                showToast('Receta guardada con éxito', 'success');
             } else {
-                alert('Error al guardar cambios');
+                showToast('Error al guardar cambios', 'error');
             }
         } catch(e) {
             console.error(e);
-            alert('Error en la conexión');
+            showToast('Error en la conexión', 'error');
         } finally {
             saveBtn.disabled = false;
             saveBtn.textContent = 'Guardar Cambios';
@@ -1175,6 +1274,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     document.getElementById('cancelEdit').onclick = () => {
-        document.getElementById('editModal').style.display = 'none';
+        document.getElementById('editModal').classList.remove('show');
     };
 });
