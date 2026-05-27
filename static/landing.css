@@ -23,7 +23,7 @@
     --shadow-lg: 0 10px 15px rgba(139, 69, 19, 0.05), 0 25px 40px rgba(139, 69, 19, 0.08);
     --shadow-heavy: 0 20px 25px rgba(139, 69, 19, 0.06), 0 40px 60px rgba(139, 69, 19, 0.12);
 
-    --max-width: 1400px;
+    --max-width: 1600px;
     --radius-md: 12px;
     --radius-lg: 24px;
     --radius-xl: 32px;
@@ -50,19 +50,6 @@ body {
     -moz-osx-font-smoothing: grayscale;
     overflow-x: hidden;
     position: relative;
-}
-
-/* Textura de papel (Noise) */
-.noise-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
-    pointer-events: none;
-    z-index: 9999;
-    opacity: 0.25;
-    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
 }
 
 h1, h2, h3, h4, .brand-text {
@@ -228,9 +215,9 @@ h1, h2, h3, h4, .brand-text {
    Hero Section (Majestic & Expansive)
    ========================================================================== */
 .hero {
-    min-height: 100vh;
-    padding-top: 15vh;
-    padding-bottom: 5rem;
+    min-height: 90vh;
+    padding-top: 12vh;
+    padding-bottom: 4rem;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -277,25 +264,25 @@ h1, h2, h3, h4, .brand-text {
 }
 
 .hero-title {
-    font-size: clamp(4rem, 9vw, 8rem);
-    margin-bottom: 1.5rem;
-    font-weight: 500;
-    letter-spacing: -0.04em;
+    font-size: clamp(3rem, 7vw, 6rem);
+    margin-bottom: 1.2rem;
+    font-weight: 600;
+    letter-spacing: -0.03em;
 }
 
 .hero-title i {
     font-family: var(--serif);
     font-style: italic;
-    font-weight: 400;
+    font-weight: 500;
     color: var(--accent-primary);
     padding-right: 0.1em;
 }
 
 .hero-subtitle {
-    font-size: clamp(1.1rem, 2vw, 1.4rem);
+    font-size: clamp(1.05rem, 1.8vw, 1.25rem);
     color: var(--text-secondary);
-    margin-bottom: 3.5rem;
-    max-width: 750px;
+    margin-bottom: 3rem;
+    max-width: 700px;
     line-height: 1.6;
     font-weight: 400;
 }
@@ -395,17 +382,17 @@ h1, h2, h3, h4, .brand-text {
 }
 
 .sticky-text-panel h2 {
-    font-size: clamp(3rem, 5vw, 4.5rem);
-    margin-bottom: 1.5rem;
-    line-height: 1;
+    font-size: clamp(2.5rem, 4.5vw, 4rem);
+    margin-bottom: 1.25rem;
+    line-height: 1.1;
 }
 
 .sticky-text-panel p {
-    font-size: 1.2rem;
+    font-size: 1.15rem;
     color: var(--text-secondary);
-    line-height: 1.7;
+    line-height: 1.6;
     margin-bottom: 2rem;
-    max-width: 500px;
+    max-width: 480px;
 }
 
 .scroll-feature-list {
@@ -417,12 +404,16 @@ h1, h2, h3, h4, .brand-text {
 .scroll-feature {
     display: flex;
     gap: 1.5rem;
-    opacity: 0.4;
-    transition: opacity 0.4s;
+    opacity: 0.15;
+    transform: translateX(0) scale(0.95);
+    filter: grayscale(100%) blur(1px);
+    transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .scroll-feature.active {
     opacity: 1;
+    transform: translateX(12px) scale(1.02);
+    filter: grayscale(0%) blur(0);
 }
 
 .sf-icon {
@@ -472,7 +463,7 @@ h1, h2, h3, h4, .brand-text {
    Bento Grid Asimétrico
    ========================================================================== */
 .bento-section {
-    padding: 10rem 0;
+    padding: 7rem 0;
     background: var(--bg-main);
     position: relative;
     z-index: 1;
@@ -481,17 +472,17 @@ h1, h2, h3, h4, .brand-text {
 .section-header-center {
     text-align: center;
     max-width: 800px;
-    margin: 0 auto 5rem;
+    margin: 0 auto 4rem;
 }
 .section-header-center h2 {
-    font-size: clamp(2.5rem, 4vw, 4rem);
-    margin-bottom: 1.5rem;
+    font-size: clamp(2.2rem, 3.5vw, 3.2rem);
+    margin-bottom: 1rem;
 }
 
 .bento-grid-expansive {
     display: grid;
     grid-template-columns: repeat(6, 1fr);
-    grid-auto-rows: 320px;
+    grid-auto-rows: 280px;
     gap: 1.5rem;
 }
 
@@ -499,7 +490,7 @@ h1, h2, h3, h4, .brand-text {
     background: white;
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-lg);
-    padding: 3rem;
+    padding: 3.5rem;
     box-shadow: var(--shadow-sm);
     display: flex;
     flex-direction: column;
@@ -571,7 +562,7 @@ h1, h2, h3, h4, .brand-text {
    FAQ Section
    ========================================================================== */
 .faq-section {
-    padding: 8rem 0;
+    padding: 6rem 0;
     background: var(--bg-secondary);
     border-top: 1px solid var(--border-subtle);
 }
@@ -671,11 +662,11 @@ h1, h2, h3, h4, .brand-text {
     width: 100vw;
     text-align: center;
     font-family: var(--serif);
-    font-size: clamp(8rem, 22vw, 25rem);
+    font-size: clamp(5rem, 15vw, 16rem);
     font-weight: 800;
     line-height: 0.75;
     letter-spacing: -0.05em;
-    color: rgba(139, 69, 19, 0.04); /* Sutil marca de agua gigante */
+    color: rgba(139, 69, 19, 0.05); /* Sutil marca de agua gigante */
     margin: 0 -4vw;
     user-select: none;
 }

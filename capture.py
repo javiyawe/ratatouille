@@ -32,8 +32,8 @@ async def capture_screenshots():
                 await asyncio.sleep(1)
                 await page.fill("textarea#chatInput", "¡Hola Chef! Tengo pechuga de pollo, un poco de nata y champiñones. ¿Qué puedo hacer que sea espectacular?")
                 await page.click("#sendChat")
-                # Wait for the AI to stream response (up to 8 seconds)
-                await asyncio.sleep(8)
+                # Wait for the AI to stream response (up to 15 seconds)
+                await asyncio.sleep(15)
             except Exception as e:
                 print(f"Could not interact with chat: {e}")
         
@@ -46,7 +46,7 @@ async def capture_screenshots():
                 await asyncio.sleep(1)
                 await page.fill("#rawRecipeText", "Para hacer una tarta de manzana perfecta necesitas:\n- 4 manzanas\n- 1 masa quebrada\n- Azúcar\n- Canela\n\nPela y corta las manzanas, mézclalas con el azúcar y la canela. Ponlas sobre la masa en un molde y hornea a 180 grados durante 45 minutos.")
                 await page.click("#extractBtn")
-                await asyncio.sleep(8)
+                await asyncio.sleep(15)
             except Exception as e:
                 print(f"Could not interact with extract: {e}")
             
