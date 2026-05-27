@@ -8,12 +8,16 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,200..900;1,200..900&family=Outfit:wght@100..900&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link rel="icon" type="image/png" href="/static/logo.png">
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
     <!-- Capa de Navegación Principal -->
     <nav class="top-nav">
-        <div class="nav-brand">🐀 Ratatui</div>
+        <div class="nav-brand" id="navBrand">
+            <img src="/static/logo.png" alt="Ratatui Logo" class="brand-logo">
+            <span>Ratatui</span>
+        </div>
         <div class="nav-links">
             <button id="layoutLibroBtn" class="nav-item active">Recetario</button>
             <button id="layoutChatBtn"  class="nav-item">Chef Ratatui</button>
@@ -27,7 +31,7 @@
         <!-- VISTA: RECETARIO (Split View) -->
         <section id="viewLibro" class="view-panel">
             <div class="split-layout">
-                <aside class="sidebar">
+                <aside class="sidebar" id="recipeSidebar">
                     <div class="sidebar-top">
                         <div class="sidebar-info">
                             <span id="recipeCount" class="count-badge">Cargando...</span>
@@ -36,7 +40,7 @@
                             <input type="text" id="searchInput" placeholder="Buscar por ingrediente o técnica...">
                             <span class="search-glow"></span>
                         </div>
-<div class="filter-bar">
+                        <div class="filter-bar">
                             <select id="sortSelect">
                                 <option value="relevance">Relevancia</option>
                                 <option value="alpha">Alfabético</option>
@@ -46,10 +50,17 @@
                             </select>
                         </div>
                     </div>
-                    <div id="recipeList" class="recipe-scroll-list">
-                        <!-- JS renders letter headers and recipe items here -->
+                    <div class="sidebar-list-wrapper">
+                        <div id="recipeList" class="recipe-scroll-list">
+                            <!-- JS renders letter headers and recipe items here -->
+                        </div>
+                        <div id="alphabetIndex" class="alphabet-index"></div>
                     </div>
                 </aside>
+
+                <div class="sidebar-resizer" id="sidebarResizer">
+                    <button id="sidebarToggleBtn" class="sidebar-toggle-btn" title="Ocultar barra lateral">◀</button>
+                </div>
 
                 <article class="content-viewer">
                     <div id="recipeDetail" class="detail-paper empty">

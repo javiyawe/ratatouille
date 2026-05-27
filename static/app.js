@@ -297,6 +297,53 @@ document.addEventListener('DOMContentLoaded', () => {
             `;
         });
         recipeList.innerHTML = html;
+
+        // --- Abecedario Flotante (A-Z) ---
+        const alphabetIndex = document.getElementById('alphabetIndex');
+        if (alphabetIndex) {
+            if (criteria === 'alpha' && !isSearchMode && recipes.length > 0) {
+                alphabetIndex.style.opacity = '1';
+                alphabetIndex.style.pointerEvents = 'auto';
+
+                const alphabet = 'ABCDEFGHIJKLMNÑOPQRSTUVWXYZ#'.split('');
+                const existingLetters = new Set();
+                recipes.forEach(r => {
+                    const char = (r.titulo || '#')[0].toUpperCase();
+                    if (/^[A-ZÑ]$/.test(char)) {
+                        existingLetters.add(char);
+                    } else {
+                        existingLetters.add('#');
+                    }
+                });
+
+                alphabetIndex.innerHTML = alphabet.map(letter => {
+                    const isActive = existingLetters.has(letter);
+                    return `<span class="alphabet-letter ${isActive ? 'active' : ''}" data-letter="${letter}">${letter}</span>`;
+                }).join('');
+
+                alphabetIndex.querySelectorAll('.alphabet-letter.active').forEach(btn => {
+                    btn.onclick = (e) => {
+                        const letter = e.target.getAttribute('data-letter');
+                        const dividers = Array.from(recipeList.querySelectorAll('.letter-divider'));
+                        const targetDivider = dividers.find(div => {
+                            const txt = div.textContent.trim();
+                            if (letter === '#') {
+                                return !/^[A-ZÑ]$/.test(txt) || txt === '#';
+                            }
+                            return txt === letter;
+                        });
+
+                        if (targetDivider) {
+                            targetDivider.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        }
+                    };
+                });
+            } else {
+                alphabetIndex.style.opacity = '0';
+                alphabetIndex.style.pointerEvents = 'none';
+                alphabetIndex.innerHTML = '';
+            }
+        }
     }
 
     window.viewRecipe = async (id, updateUrl = true) => {
@@ -1276,4 +1323,100 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('cancelEdit').onclick = () => {
         document.getElementById('editModal').classList.remove('show');
     };
+
+    // --- Marca / Navegación principal ---
+    const navBrand = document.getElementById('navBrand');
+    if (navBrand) {
+        navBrand.onclick = () => {
+            currentSelectedId = null;
+            setLayout('libro');
+            recipeDetail.innerHTML = `
+                <div class="detail-paper empty">
+                    <div class="empty-state">
+                        <div class="empty-icon">🍲</div>
+                        <p>Elige una receta del libro para comenzar la magia.</p>
+                    </div>
+                </div>
+            `;
+            document.querySelectorAll('.recipe-item').forEach(el => el.classList.remove('active'));
+            navigate('/libro');
+        };
+    }
+
+    // --- Redimensionamiento y Ocultamiento de Barra Lateral ---
+    const recipeSidebar = document.getElementById('recipeSidebar');
+    const sidebarResizer = document.getElementById('sidebarResizer');
+    const sidebarToggleBtn = document.getElementById('sidebarToggleBtn');
+
+    let isDragging = false;
+    let sidebarWidth = parseInt(localStorage.getItem('sidebar_width')) || 380;
+    let sidebarCollapsed = localStorage.getItem('sidebar_collapsed') === 'true';
+
+    function initSidebarState() {
+        if (recipeSidebar) {
+            if (sidebarCollapsed) {
+                recipeSidebar.classList.add('collapsed');
+                if (sidebarToggleBtn) sidebarToggleBtn.textContent = '▶';
+            } else {
+                recipeSidebar.classList.remove('collapsed');
+                recipeSidebar.style.width = `${sidebarWidth}px`;
+                document.documentElement.style.setProperty('--sidebar-w', `${sidebarWidth}px`);
+                if (sidebarToggleBtn) sidebarToggleBtn.textContent = '◀';
+            }
+        }
+    }
+    initSidebarState();
+
+    if (sidebarResizer) {
+        sidebarResizer.addEventListener('mousedown', (e) => {
+            if (e.target === sidebarToggleBtn) return;
+            if (sidebarCollapsed) return;
+
+            isDragging = true;
+            document.body.style.cursor = 'col-resize';
+            sidebarResizer.classList.add('dragging');
+            document.body.style.userSelect = 'none';
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+
+            const containerRect = document.querySelector('.split-layout').getBoundingClientRect();
+            const newWidth = e.clientX - containerRect.left;
+
+            if (newWidth >= 260 && newWidth <= 550) {
+                sidebarWidth = newWidth;
+                recipeSidebar.style.width = `${sidebarWidth}px`;
+                document.documentElement.style.setProperty('--sidebar-w', `${sidebarWidth}px`);
+                localStorage.setItem('sidebar_width', sidebarWidth);
+            }
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (isDragging) {
+                isDragging = false;
+                document.body.style.cursor = '';
+                sidebarResizer.classList.remove('dragging');
+                document.body.style.userSelect = '';
+            }
+        });
+    }
+
+    if (sidebarToggleBtn) {
+        sidebarToggleBtn.onclick = (e) => {
+            e.stopPropagation();
+            sidebarCollapsed = !sidebarCollapsed;
+            localStorage.setItem('sidebar_collapsed', sidebarCollapsed);
+
+            if (sidebarCollapsed) {
+                recipeSidebar.classList.add('collapsed');
+                sidebarToggleBtn.textContent = '▶';
+            } else {
+                recipeSidebar.classList.remove('collapsed');
+                recipeSidebar.style.width = `${sidebarWidth}px`;
+                document.documentElement.style.setProperty('--sidebar-w', `${sidebarWidth}px`);
+                sidebarToggleBtn.textContent = '◀';
+            }
+        };
+    }
 });
