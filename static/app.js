@@ -846,15 +846,21 @@ document.addEventListener('DOMContentLoaded', () => {
     /**
      * Convierte referencias del LLM en spans clicables.
      * Soporta dos formatos:
-     *   [1], [2]  — nuevo formato numerado (sources array requerido)
-     *   [ID: uuid] — formato legacy para mensajes antiguos
+     *   [Texto](ref:uuid) — nuevo formato estricto
+     *   [1], [2]  — formato numerado antiguo
+     *   [ID: uuid] — formato legacy
      */
     function parseReferences(text, sources = []) {
-        // Mapa num → source
+        // Formato nuevo estricto: [Texto](ref:uuid)
+        text = text.replace(/\[([^\]]+)\]\(ref:([a-fA-F0-9\-]{36})\)/g, (match, name, id) => {
+            return `<span class="recipe-ref" data-recipe-id="${id}">✨ ${name}</span>`;
+        });
+
+        // Mapa num → source (para legacy)
         const numMap = {};
         (sources || []).forEach(s => { if (s.num != null) numMap[s.num] = s; });
 
-        // Formato nuevo: [1], [2] …
+        // Formato legacy numerado: [1], [2] …
         if (Object.keys(numMap).length) {
             text = text.replace(/\[(\d+)\]/g, (match, n) => {
                 const s = numMap[parseInt(n)];
@@ -863,22 +869,75 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
 
-        // Formato legacy: Nombre [ID: uuid]
+        // Formato super legacy: Nombre [ID: uuid]
         text = text.replace(/([^#*\[\n\r]+)?\s*\[[iI][dD]:\s*([0-9a-fA-F-]{8,36})\]/g,
             (_m, name, id) => {
                 const cleanId     = id.trim();
                 const displayName = (name || '').trim() || 'Ver Receta';
-                return `<span class="recipe-ref" data-recipe-id="${cleanId}" title="${displayName}"><span class="ref-icon">📖</span> ${displayName}</span>`;
+                return `<span class="recipe-ref" data-recipe-id="${cleanId}"><span class="ref-icon">📖</span> ${displayName}</span>`;
             }
         );
 
         return text;
     }
 
-    // Delegación de eventos para las referencias del chat
+    // --- Hover Popup (Mini visual popup) ---
+    let hoverTimeout;
+    const hoverPopup = document.createElement('div');
+    hoverPopup.className = 'recipe-hover-popup hide';
+    document.body.appendChild(hoverPopup);
+
+    function hideHoverPopup() {
+        hoverPopup.classList.add('hide');
+    }
+
+    chatMessages.addEventListener('mouseover', (e) => {
+        const ref = e.target.closest('.recipe-ref');
+        if (ref) {
+            clearTimeout(hoverTimeout);
+            const id = ref.getAttribute('data-recipe-id');
+            if (id) {
+                // Find recipe in local array
+                const r = recipes.find(x => x._id === id);
+                if (r) {
+                    const timeInfo = r.tiempos?.total_minutos ? `${r.tiempos.total_minutos} min` : '?';
+                    const mainIngs = (r.ingredientes || []).slice(0, 3).map(i => i.nombre).join(', ');
+                    
+                    hoverPopup.innerHTML = `
+                        <div class="hp-title">${r.titulo}</div>
+                        <div class="hp-meta">${r.tipo_cocina || 'General'} • ${r.dificultad || 'Media'} • ⏱ ${timeInfo}</div>
+                        ${mainIngs ? `<div class="hp-ings"><b>Ingredientes clave:</b> ${mainIngs}...</div>` : ''}
+                        <div class="hp-hint">Haz clic para ver la receta</div>
+                    `;
+                    
+                    // Position popup above the link
+                    const rect = ref.getBoundingClientRect();
+                    hoverPopup.style.left = `${Math.max(10, rect.left)}px`;
+                    hoverPopup.style.top = `${rect.top - 10}px`;
+                    
+                    hoverPopup.classList.remove('hide');
+                }
+            }
+        }
+    });
+
+    chatMessages.addEventListener('mouseout', (e) => {
+        const ref = e.target.closest('.recipe-ref');
+        if (ref) {
+            hoverTimeout = setTimeout(hideHoverPopup, 300);
+        }
+    });
+
+    hoverPopup.addEventListener('mouseover', () => clearTimeout(hoverTimeout));
+    hoverPopup.addEventListener('mouseout', () => {
+        hoverTimeout = setTimeout(hideHoverPopup, 300);
+    });
+
+    // Delegación de eventos para las referencias del chat (click)
     chatMessages.addEventListener('click', (e) => {
         const ref = e.target.closest('.recipe-ref');
         if (ref) {
+            hideHoverPopup();
             const id = ref.getAttribute('data-recipe-id');
             if (id) window.previewRecipe(id);
         }

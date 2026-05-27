@@ -25,6 +25,25 @@ def get_col():
             metadata={"hnsw:space": "cosine"},
         )
 
+def get_chunk_col():
+    try:
+        col = _chroma.get_collection(name="recipe_chunks")
+        dim = 768 if EMBED_MODEL == "nomic-embed-text:latest" else 1024
+        if col.count() > 0:
+            col.query(query_embeddings=[[0.0] * dim], n_results=1)
+        return col
+    except chromadb.errors.ChromaError as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Error accessing chunk collection: {e}. Recreating...")
+        try:
+            _chroma.delete_collection(name="recipe_chunks")
+        except Exception:
+            pass
+        return _chroma.create_collection(
+            name="recipe_chunks",
+            metadata={"hnsw:space": "cosine"},
+        )
+
 # ─────────────────────────── SQLite (Chats) ────────────────────────
 _CHAT_DB = Path("./chats.db")
 
@@ -34,8 +53,9 @@ def chat_conn() -> sqlite3.Connection:
     return conn
 
 def init_db() -> None:
-    # Asegurar que la colección de Chroma se inicialice
+    # Asegurar que las colecciones de Chroma se inicialicen
     get_col()
+    get_chunk_col()
     
     with chat_conn() as conn:
         conn.execute("""

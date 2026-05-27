@@ -147,20 +147,24 @@ async def _process_chat(
 
                 if all_sources:
                     unique = list({s["id"]: s for s in all_sources}.values())
-                    _src   = [{"num": i + 1, "id": s["id"], "titulo": s["titulo"]}
-                              for i, s in enumerate(unique)]
+                    _src   = [{"id": s["id"], "titulo": s["titulo"]} for s in unique]
                     await emit("sources", value=_src)
 
-                    numbered_list = "\n".join(f"[{s['num']}] {s['titulo']}" for s in _src)
+                    numbered_list = "\n".join(f"- {s['titulo']} (ID: {s['id']})" for s in _src)
                     example = _src[0]
                     msgs.append({
                         "role": "system",
                         "content": (
                             f"Recetas disponibles en el libro:\n{numbered_list}\n\n"
-                            "Al mencionar cualquier receta usa su número entre corchetes "
-                            f"justo después del nombre. Ejemplo: \"{example['titulo']} [{example['num']}]\".\n"
-                            "Solo usa estos números. No pongas corchetes en otras cosas."
+                            "Al mencionar cualquier receta usa OBLIGATORIAMENTE el formato Markdown de enlace con ref:. "
+                            f"Ejemplo: \"[{example['titulo']}](ref:{example['id']})\".\n"
+                            "NO uses otros formatos como [1]."
                         )
+                    })
+                else:
+                    msgs.append({
+                        "role": "system",
+                        "content": "La búsqueda no ha devuelto NINGUNA receta. RESPONDE EXPLÍCITAMENTE que no tienes ninguna receta que coincida en el libro. NO INVENTES RECETAS BAJO NINGÚN CONCEPTO."
                     })
 
                 await emit("thought", value="Preparando la respuesta…")
@@ -185,20 +189,19 @@ async def _process_chat(
                             _src.append({"id": r["_id"], "titulo": r["titulo"]})
                     
                     unique = list({s["id"]: s for s in _src}.values())
-                    _src   = [{"num": i + 1, "id": s["id"], "titulo": s["titulo"]}
-                              for i, s in enumerate(unique)]
+                    _src   = [{"id": s["id"], "titulo": s["titulo"]} for s in unique]
                     await emit("sources", value=_src)
 
-                    numbered_list = "\n".join(f"[{s['num']}] {s['titulo']}" for s in _src)
+                    numbered_list = "\n".join(f"- {s['titulo']} (ID: {s['id']})" for s in _src)
                     example = _src[0]
                     msgs.append({
                         "role": "system",
                         "content": (
                             f"Recetas del libro (CONTEXTO):\n{json.dumps(docs, ensure_ascii=False)}\n\n"
                             f"Recetas disponibles:\n{numbered_list}\n\n"
-                            "Al mencionar cualquier receta del libro, usa obligatoriamente su número entre corchetes "
-                            f"justo después del nombre. Ejemplo: \"{example['titulo']} [{example['num']}]\".\n"
-                            "Solo usa estos números. No pongas corchetes para otras cosas."
+                            "Al mencionar cualquier receta usa OBLIGATORIAMENTE el formato Markdown de enlace con ref:. "
+                            f"Ejemplo: \"[{example['titulo']}](ref:{example['id']})\".\n"
+                            "NO uses otros formatos."
                         )
                     })
                     
@@ -211,12 +214,18 @@ async def _process_chat(
                             await emit("token", value=chunk)
                     await emit("done")
                 else:
+                    msgs.append({
+                        "role": "system",
+                        "content": "No se encontraron recetas en el libro. Si el usuario pide un plato, responde explícitamente que NO lo tienes. NO INVENTES RECETAS."
+                    })
+                    
                     await emit("thought", value="Respondiendo...")
-                    for chunk in re.split(r"(\s+)", content):
-                        if chunk:
+                    async for chunk in llm_stream(msgs, temperature=0.1):
+                        if chunk == "\n\n[DONE]":
+                            break
+                        elif chunk:
                             full_ai += chunk
                             await emit("token", value=chunk)
-                            await asyncio.sleep(0.005)
                     await emit("done")
 
     except Exception as exc:

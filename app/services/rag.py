@@ -2,8 +2,9 @@ import json
 import uuid
 from typing import Optional
 
-from app.database import get_col
+from app.database import get_col, get_chunk_col
 from app.config import SYSTEM_PROMPT
+import logging
 from app.services.llm import embed, llm
 
 def build_embed_text(r: dict) -> str:
@@ -41,20 +42,46 @@ def normalize_recipe(r: dict) -> dict:
         r["pasos"] = []
     return r
 
+def build_recipe_chunks(doc_id: str, recipe: dict) -> list[tuple[str, str, dict]]:
+    """Devuelve lista de (chunk_id, text, metadata) para una receta."""
+    chunks = []
+    base_meta = {
+        "recipe_id": doc_id,
+        "titulo": str(recipe.get("titulo", "Sin título")),
+        "total_time_minutes": int((recipe.get("tiempos") or {}).get("total_minutos", 0)),
+        "dificultad": str(recipe.get("dificultad", "Media")),
+    }
+    
+    # Chunk 1: Metadata y descripción
+    desc_text = f"Título: {recipe.get('titulo','')}. Descripción: {recipe.get('descripcion','')}. Cocina: {recipe.get('tipo_cocina','')}. Etiquetas: {', '.join(recipe.get('etiquetas', []))}"
+    chunks.append((f"{doc_id}_meta", desc_text, {**base_meta, "chunk_type": "meta"}))
+    
+    # Chunk 2: Ingredientes
+    ingredientes = ", ".join([f"{i.get('cantidad','')} {i.get('unidad','')} {i.get('nombre','')}".strip() for i in recipe.get("ingredientes", [])])
+    if ingredientes:
+        chunks.append((f"{doc_id}_ingredientes", f"Ingredientes de {recipe.get('titulo','')}: {ingredientes}", {**base_meta, "chunk_type": "ingredientes"}))
+    
+    # Chunk 3: Pasos
+    pasos = " ".join(recipe.get("pasos", []))
+    if pasos:
+        chunks.append((f"{doc_id}_pasos", f"Pasos para {recipe.get('titulo','')}: {pasos}", {**base_meta, "chunk_type": "pasos"}))
+        
+    return chunks
+
 
 def safe_query(query_embedding: list, n: int, where: Optional[dict] = None) -> dict:
-    total = get_col().count()
+    total = get_chunk_col().count()
     if total == 0:
         return {"ids": [[]], "documents": [[]], "metadatas": [[]], "distances": [[]]}
     n = min(n, total)
     kwargs = {
         "query_embeddings": [query_embedding],
         "n_results": n,
-        "include": ["documents", "metadatas", "distances"],
+        "include": ["metadatas", "distances"],
     }
     if where:
         kwargs["where"] = where
-    return get_col().query(**kwargs)
+    return get_chunk_col().query(**kwargs)
 
 
 def parse_docs(results: dict) -> list[dict]:
@@ -88,25 +115,33 @@ async def perform_search(
     words   = [w for w in q_lower.split() if len(w) >= 2]
     where   = build_where(max_time, difficulty)
 
-    # ── 1. Búsqueda semántica vectorial ──────────────────────────────────
+    # ── 1. Búsqueda semántica vectorial (en Chunks) ─────────────────────────
     vec = await embed(q) if q else None
-    sem_ids: dict[str, float] = {}   # id → similarity score
+    sem_ids: dict[str, float] = {}   # recipe_id → similarity score
     sem_ordered: list[dict]   = []
 
     if vec:
-        n = min(max(n_results, 30), total)
+        n = min(max(n_results * 3, 30), get_chunk_col().count())
         res = safe_query(vec, n, where)
-        if res.get("documents") and res["documents"][0]:
-            for i, doc in enumerate(res["documents"][0]):
-                try:
-                    r = json.loads(doc)
-                    r = normalize_recipe(r)
-                    r["_id"]    = res["ids"][0][i]
-                    r["_score"] = round(1.0 - res["distances"][0][i], 4)
-                    sem_ids[r["_id"]] = r["_score"]
-                    sem_ordered.append(r)
-                except Exception as e:
-                    logging.getLogger(__name__).warning(f"Error parsing semantic result: {e}")
+        if res.get("metadatas") and res["metadatas"][0]:
+            for i, meta in enumerate(res["metadatas"][0]):
+                rid = meta["recipe_id"]
+                score = round(1.0 - res["distances"][0][i], 4)
+                # Conservamos el mejor score de los chunks para esa receta
+                if rid not in sem_ids or score > sem_ids[rid]:
+                    sem_ids[rid] = score
+            
+            # Recuperar las recetas completas ordenadas por score semántico
+            if sem_ids:
+                sorted_rids = sorted(sem_ids.keys(), key=lambda k: sem_ids[k], reverse=True)
+                full_docs = get_col().get(ids=sorted_rids, include=["documents"])
+                doc_map = {fid: json.loads(fdoc) for fid, fdoc in zip(full_docs["ids"], full_docs["documents"])}
+                for rid in sorted_rids:
+                    if rid in doc_map:
+                        r = normalize_recipe(doc_map[rid])
+                        r["_id"] = rid
+                        r["_score"] = sem_ids[rid]
+                        sem_ordered.append(r)
 
     # ── 2. Búsqueda textual sobre todos los documentos ───────────────────
     all_raw = get_col().get(limit=500, include=["documents"])
@@ -182,7 +217,8 @@ async def perform_search(
 
 async def store_recipe_async(recipe: dict) -> str:
     doc_id = str(uuid.uuid4())
-    vector = await embed(build_embed_text(recipe))
+    # 1. Guardar receta completa (para recuperar luego)
+    vector = await embed(build_embed_text(recipe)) # Keep this for legacy / list_recipes if needed, or dummy
     tiempos = recipe.get("tiempos") or {}
     metadata = {
         "titulo": str(recipe.get("titulo", "Sin título")),
@@ -195,6 +231,26 @@ async def store_recipe_async(recipe: dict) -> str:
         documents=[json.dumps(recipe, ensure_ascii=False)],
         metadatas=[metadata],
     )
+    
+    # 2. Generar y guardar chunks para búsqueda semántica precisa
+    chunks = build_recipe_chunks(doc_id, recipe)
+    if chunks:
+        c_ids = [c[0] for c in chunks]
+        c_texts = [c[1] for c in chunks]
+        c_metas = [c[2] for c in chunks]
+        
+        # Generar embeddings para los chunks
+        c_embeds = []
+        for text in c_texts:
+            c_embeds.append(await embed(text))
+            
+        get_chunk_col().add(
+            ids=c_ids,
+            embeddings=c_embeds,
+            documents=c_texts,
+            metadatas=c_metas
+        )
+
     return doc_id
 
 
