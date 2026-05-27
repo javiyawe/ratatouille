@@ -342,48 +342,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         recipeList.innerHTML = html;
 
-        // --- Abecedario Flotante (A-Z) ---
-        const alphabetIndex = document.getElementById('alphabetIndex');
-        if (alphabetIndex) {
-            if (criteria === 'alpha' && !isSearchMode && recipes.length > 0) {
-                alphabetIndex.classList.add('visible');
-
-                const alphabet = '#ABCDEFGHIJKLMNÑOPQRSTUVWXYZ'.split('');
-                const existingLetters = new Set();
-                recipes.forEach(r => {
-                    let char = (r.titulo || '#')[0].toUpperCase();
-                    char = char.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-                    if (!/^[A-ZÑ]$/.test(char)) char = '#';
-                    existingLetters.add(char);
-                });
-
-                alphabetIndex.innerHTML = alphabet.map(letter => {
-                    const hasItems = existingLetters.has(letter);
-                    return `<span class="alphabet-letter ${hasItems ? 'has-items' : ''}" data-letter="${letter}">${letter}</span>`;
-                }).join('');
-
-                alphabetIndex.querySelectorAll('.alphabet-letter.has-items').forEach(btn => {
-                    btn.onclick = (e) => {
-                        const letter = e.target.getAttribute('data-letter');
-                        const dividers = Array.from(recipeList.querySelectorAll('.letter-divider'));
-                        const targetDivider = dividers.find(div => {
-                            const txt = div.textContent.trim();
-                            if (letter === '#') {
-                                return !/^[A-ZÑ]$/.test(txt) || txt === '#';
-                            }
-                            return txt === letter;
-                        });
-
-                        if (targetDivider) {
-                            targetDivider.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                        }
-                    };
-                });
-            } else {
-                alphabetIndex.classList.remove('visible');
-                alphabetIndex.innerHTML = '';
-            }
-        }
     }
 
     window.viewRecipe = async (id, updateUrl = true) => {
@@ -1101,7 +1059,7 @@ document.addEventListener('DOMContentLoaded', () => {
             recipes = data.recipes || [];
             // In search mode, just render in the order returned (relevance)
             // No need to change sort
-            sortAndRender();
+            renderList();
         } catch (e) {
             recipeList.innerHTML = '<div style="padding:2rem;color:#e74c3c;">Error en la búsqueda.</div>';
         }
