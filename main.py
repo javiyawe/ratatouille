@@ -40,6 +40,11 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 async def css3d_page():
     return FileResponse("static/css3d.html")
 
-@app.get("/{full_path:path}")
+@app.get("/")
+async def landing():
+    return FileResponse("static/landing.html")
+
+@app.get("/recetario")
+@app.get("/recetario/{full_path:path}")
 async def catch_all(_full_path: str = ""):
     return FileResponse("static/index.html")

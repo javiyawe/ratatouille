@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ratatui — La Revolución Culinaria</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="icon" type="image/png" href="/static/logo.png">
+    <link rel="stylesheet" href="/static/landing.css">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+    <div class="ambient-glow"></div>
+    
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="brand">
+                <img src="/static/logo.png" alt="Ratatui">
+                <span>Ratatui</span>
+            </div>
+            <div class="nav-links">
+                <a href="#features">Características</a>
+                <a href="#showcase">Plataforma</a>
+                <a href="/recetario" class="btn-outline">Iniciar Sesión</a>
+            </div>
+        </div>
+    </nav>
+
+    <main>
+        <section class="hero reveal">
+            <div class="hero-content">
+                <div class="badge">IA Agéntica Local</div>
+                <h1>Cocina. Organiza.<br><span>Crea magia.</span></h1>
+                <p>Ratatui es tu asistente culinario minimalista e inteligente. Un espacio limpio donde tus recetas y la Inteligencia Artificial convergen en total privacidad.</p>
+                
+                <div class="hero-actions">
+                    <a href="/recetario" class="btn-primary">
+                        Abrir Recetario 
+                        <i data-lucide="arrow-right"></i>
+                    </a>
+                </div>
+            </div>
+            
+            <div class="hero-visual reveal-delay">
+                <div class="browser-mockup">
+                    <div class="browser-header">
+                        <span class="dot close"></span>
+                        <span class="dot min"></span>
+                        <span class="dot max"></span>
+                    </div>
+                    <img src="/static/real_pc.png" alt="Ratatui Interface" class="mockup-img">
+                </div>
+            </div>
+        </section>
+
+        <section id="features" class="features reveal">
+            <div class="section-heading">
+                <h2>Diseñado para la claridad</h2>
+                <p>Herramientas potentes invisibles a simple vista. Todo lo que necesitas, nada de lo que sobra.</p>
+            </div>
+            
+            <div class="bento-grid">
+                <div class="bento-card col-span-2">
+                    <i data-lucide="brain-circuit" class="icon"></i>
+                    <h3>Memoria Semántica RAG</h3>
+                    <p>Encuentra lo que buscas al instante. Ratatui comprende el contexto de tus recetas usando bases de datos vectoriales avanzadas (ChromaDB).</p>
+                </div>
+                <div class="bento-card">
+                    <i data-lucide="cpu" class="icon"></i>
+                    <h3>100% Local</h3>
+                    <p>Impulsado por Ollama. Tu recetario y tus conversaciones nunca abandonan tu ordenador.</p>
+                </div>
+                <div class="bento-card">
+                    <i data-lucide="wand-2" class="icon"></i>
+                    <h3>Extracción Mágica</h3>
+                    <p>Pega cualquier texto desordenado. La IA lo convierte en una receta estructurada automáticamente.</p>
+                </div>
+                <div class="bento-card col-span-2">
+                    <i data-lucide="plug" class="icon"></i>
+                    <h3>Arquitectura MCP</h3>
+                    <p>Tu Chef IA interactúa con herramientas dinámicas. Escala porciones, genera listas de la compra o sugiere maridajes en tiempo real.</p>
+                </div>
+            </div>
+        </section>
+
+        <section id="showcase" class="multi-device reveal">
+            <div class="section-heading">
+                <h2>Una experiencia fluida</h2>
+            </div>
+            
+            <div class="device-gallery">
+                <div class="device desktop parallax" data-speed="1">
+                    <img src="/static/real_pc.png" alt="Desktop">
+                </div>
+                <div class="device tablet parallax" data-speed="2">
+                    <img src="/static/real_ipad.png" alt="Tablet">
+                </div>
+                <div class="device mobile parallax" data-speed="3">
+                    <img src="/static/real_mobile.png" alt="Mobile">
+                </div>
+            </div>
+        </section>
+
+        <section class="bottom-cta reveal">
+            <div class="cta-card">
+                <h2>Comienza tu viaje culinario</h2>
+                <p>Únete y experimenta el futuro de la gestión de recetas.</p>
+                <a href="/recetario" class="btn-primary btn-large">Entrar ahora</a>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <div class="footer-content">
+            <div class="brand">
+                <img src="/static/logo.png" alt="Ratatui" width="24">
+                <span>Ratatui</span>
+            </div>
+            <div class="footer-links">
+                <span>Minimalista</span>
+                <span>•</span>
+                <span>Privado</span>
+                <span>•</span>
+                <span>Inteligente</span>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // Inicializar iconos
+        lucide.createIcons();
+
+        // Reveal on scroll
+        const revealElements = document.querySelectorAll('.reveal');
+        
+        const revealCallback = (entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('active');
+                }
+            });
+        };
+        
+        const observer = new IntersectionObserver(revealCallback, {
+            threshold: 0.1,
+            rootMargin: "0px 0px -50px 0px"
+        });
+        
+        revealElements.forEach(el => observer.observe(el));
+        
+        // Parallax simple para la galería
+        document.addEventListener('mousemove', (e) => {
+            const parallaxElements = document.querySelectorAll('.parallax');
+            const x = (e.clientX - window.innerWidth / 2) / 50;
+            const y = (e.clientY - window.innerHeight / 2) / 50;
+            
+            parallaxElements.forEach(el => {
+                const speed = el.getAttribute('data-speed');
+                el.style.transform = `translate(${x * speed}px, ${y * speed}px)`;
+            });
+        });
+        
+        // Activar header al cargar
+        setTimeout(() => {
+            document.querySelector('.hero').classList.add('active');
+        }, 100);
+    </script>
+</body>
+</html>
