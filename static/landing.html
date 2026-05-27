@@ -3,170 +3,297 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ratatui — La Revolución Culinaria</title>
+    <title>Ratatui — Tu Asistente Culinario</title>
+    
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,200..900;1,200..900&family=Outfit:wght@100..900&display=swap" rel="stylesheet">
+    
     <link rel="icon" type="image/png" href="/static/logo.png">
     <link rel="stylesheet" href="/static/landing.css">
+    
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
 </head>
 <body>
-    <div class="ambient-glow"></div>
     
-    <nav class="navbar">
-        <div class="nav-container">
-            <div class="brand">
+    <div class="mesh-bg">
+        <div class="mesh-blob mesh-1"></div>
+        <div class="mesh-blob mesh-2"></div>
+    </div>
+
+    <nav class="navbar" id="navbar">
+        <div class="nav-content">
+            <a href="#" class="brand">
                 <img src="/static/logo.png" alt="Ratatui">
-                <span>Ratatui</span>
-            </div>
+                <span class="brand-text">Ratatui</span>
+            </a>
             <div class="nav-links">
-                <a href="#features">Características</a>
-                <a href="#showcase">Plataforma</a>
-                <a href="/recetario" class="btn-outline">Iniciar Sesión</a>
+                <a href="#how-it-works" class="nav-link">Cómo funciona</a>
+                <a href="#features" class="nav-link">Beneficios</a>
+                <a href="#faq" class="nav-link">FAQ</a>
+                <a href="/recetario" class="btn-outline-sm">Demo Temporal</a>
             </div>
         </div>
     </nav>
 
     <main>
-        <section class="hero reveal">
+        <!-- Mega Hero Section -->
+        <section class="hero fade-up">
             <div class="hero-content">
-                <div class="badge">IA Agéntica Local</div>
-                <h1>Cocina. Organiza.<br><span>Crea magia.</span></h1>
-                <p>Ratatui es tu asistente culinario minimalista e inteligente. Un espacio limpio donde tus recetas y la Inteligencia Artificial convergen en total privacidad.</p>
-                
-                <div class="hero-actions">
-                    <a href="/recetario" class="btn-primary">
-                        Abrir Recetario 
-                        <i data-lucide="arrow-right"></i>
-                    </a>
-                </div>
-            </div>
-            
-            <div class="hero-visual reveal-delay">
-                <div class="browser-mockup">
-                    <div class="browser-header">
-                        <span class="dot close"></span>
-                        <span class="dot min"></span>
-                        <span class="dot max"></span>
+                <div class="hero-text">
+                    <div class="hero-badge">
+                        <span class="pulse-dot"></span>
+                        Acceso anticipado privado
                     </div>
-                    <img src="/static/real_pc.png" alt="Ratatui Interface" class="mockup-img">
+                    
+                    <h1 class="hero-title">
+                        Cocina con<br>
+                        <span class="text-gradient">Inteligencia.</span>
+                    </h1>
+                    
+                    <p class="hero-subtitle">
+                        Imagina un recetario que no solo guarda tus platos, sino que los comprende. Dile qué tienes en la nevera y Ratatui creará el menú perfecto.
+                    </p>
+                    
+                    <!-- Waitlist Form (Hero) -->
+                    <form class="waitlist-form" onsubmit="event.preventDefault(); alert('¡Gracias por unirte a la lista de acceso anticipado!');">
+                        <div class="input-group">
+                            <i data-lucide="mail" class="input-icon"></i>
+                            <input type="email" placeholder="Introduce tu correo electrónico" required>
+                            <button type="submit" class="btn-primary">Únete a la lista</button>
+                        </div>
+                        <p class="form-hint">Únete a la beta cerrada. Plazas limitadas.</p>
+                    </form>
+                </div>
+                
+                <div class="hero-visual">
+                    <div class="browser-mockup hover-lift">
+                        <div class="browser-bar">
+                            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+                            <div class="url-bar"><i data-lucide="lock"></i> Tu cocina digital</div>
+                        </div>
+                        <img src="/static/real_pc_home.png" alt="Ratatui Dashboard" loading="lazy">
+                    </div>
                 </div>
             </div>
         </section>
 
-        <section id="features" class="features reveal">
-            <div class="section-heading">
-                <h2>Diseñado para la claridad</h2>
-                <p>Herramientas potentes invisibles a simple vista. Todo lo que necesitas, nada de lo que sobra.</p>
-            </div>
-            
-            <div class="bento-grid">
-                <div class="bento-card col-span-2">
-                    <i data-lucide="brain-circuit" class="icon"></i>
-                    <h3>Memoria Semántica RAG</h3>
-                    <p>Encuentra lo que buscas al instante. Ratatui comprende el contexto de tus recetas usando bases de datos vectoriales avanzadas (ChromaDB).</p>
+        <!-- Use Cases -->
+        <section id="how-it-works" class="use-cases-section">
+            <div class="container fade-up">
+                <div class="section-header center">
+                    <h2>Tu cocina, sin complicaciones</h2>
+                    <p>Diseñado para que dediques menos tiempo planificando y más tiempo disfrutando. Olvídate de buscar ingredientes exactos; Ratatui entiende el contexto.</p>
                 </div>
-                <div class="bento-card">
-                    <i data-lucide="cpu" class="icon"></i>
-                    <h3>100% Local</h3>
-                    <p>Impulsado por Ollama. Tu recetario y tus conversaciones nunca abandonan tu ordenador.</p>
+
+                <!-- Case 1: Chat interaction -->
+                <div class="showcase-grid fade-up delay-1">
+                    <div class="showcase-text">
+                        <div class="icon-box"><i data-lucide="message-square"></i></div>
+                        <h3>Dile qué tienes, él sabrá qué hacer</h3>
+                        <p>Abre el chat y pregúntale a tu Chef personal. Ratatui lee todas tus recetas al instante y te sugiere ideas creativas usando exactamente lo que tienes en tu despensa.</p>
+                        
+                        <div class="chat-example">
+                            <div class="chat-bubble user">"Tengo pollo, champiñones y un poco de nata a punto de caducar. ¿Qué me preparo?"</div>
+                            <div class="chat-bubble ai">"¡Perfecto! Tienes guardada una receta de 'Pollo a la Crema' que encaja genial. ¿Quieres que te la adapte para usar esos champiñones?"</div>
+                        </div>
+                    </div>
+                    
+                    <div class="showcase-visual">
+                        <img src="/static/real_pc_chat.png" alt="Chat Interactivo" loading="lazy" class="shadow-heavy rounded-lg hover-lift">
+                    </div>
                 </div>
-                <div class="bento-card">
-                    <i data-lucide="wand-2" class="icon"></i>
-                    <h3>Extracción Mágica</h3>
-                    <p>Pega cualquier texto desordenado. La IA lo convierte en una receta estructurada automáticamente.</p>
-                </div>
-                <div class="bento-card col-span-2">
-                    <i data-lucide="plug" class="icon"></i>
-                    <h3>Arquitectura MCP</h3>
-                    <p>Tu Chef IA interactúa con herramientas dinámicas. Escala porciones, genera listas de la compra o sugiere maridajes en tiempo real.</p>
+
+                <!-- Case 2: Extraction -->
+                <div class="showcase-grid reverse fade-up">
+                    <div class="showcase-text">
+                        <div class="icon-box"><i data-lucide="wand-2"></i></div>
+                        <h3>Guarda recetas por arte de magia</h3>
+                        <p>¿Viste una receta en un blog llena de texto innecesario? Cópiala tal cual y pégala. La inteligencia artificial limpiará el texto, separará los ingredientes de los pasos, y lo organizará de forma perfecta en tu recetario.</p>
+                        
+                        <ul class="feature-list mt-4">
+                            <li><i data-lucide="check-circle-2"></i> Adiós a escribir a mano.</li>
+                            <li><i data-lucide="check-circle-2"></i> Estructura automática (Ingredientes y Pasos).</li>
+                            <li><i data-lucide="check-circle-2"></i> Calcula tiempos y dificultad al instante.</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="showcase-visual">
+                        <img src="/static/real_pc_extract.png" alt="Extracción Inteligente" loading="lazy" class="shadow-heavy rounded-lg hover-lift">
+                    </div>
                 </div>
             </div>
         </section>
 
-        <section id="showcase" class="multi-device reveal">
-            <div class="section-heading">
-                <h2>Una experiencia fluida</h2>
-            </div>
-            
-            <div class="device-gallery">
-                <div class="device desktop parallax" data-speed="1">
-                    <img src="/static/real_pc.png" alt="Desktop">
+        <!-- Feature Bento Grid -->
+        <section id="features" class="tech-section">
+            <div class="container fade-up">
+                <div class="section-header center">
+                    <h2>Todo lo que necesitas, nada de lo que sobra</h2>
                 </div>
-                <div class="device tablet parallax" data-speed="2">
-                    <img src="/static/real_ipad.png" alt="Tablet">
-                </div>
-                <div class="device mobile parallax" data-speed="3">
-                    <img src="/static/real_mobile.png" alt="Mobile">
+
+                <div class="bento-complex">
+                    <div class="bento-box col-2 fade-up">
+                        <div class="bento-inner">
+                            <i data-lucide="shield-check" class="icon-lg"></i>
+                            <h3>100% Privado</h3>
+                            <p>Ratatui funciona internamente en tu ordenador. Tus recetas, tus secretos de cocina y tus conversaciones nunca viajan a servidores de terceros.</p>
+                        </div>
+                    </div>
+                    
+                    <div class="bento-box fade-up delay-1">
+                        <div class="bento-inner">
+                            <i data-lucide="layout-panel-left" class="icon-md"></i>
+                            <h4>Pantalla Dividida</h4>
+                            <p>Cocina y chatea al mismo tiempo sin perder la receta de vista.</p>
+                        </div>
+                    </div>
+
+                    <div class="bento-box fade-up delay-2">
+                        <div class="bento-inner">
+                            <i data-lucide="scale" class="icon-md"></i>
+                            <h4>Escalado Rápido</h4>
+                            <p>¿Vienen invitados? Pide al Chef que multiplique los ingredientes.</p>
+                        </div>
+                    </div>
+                    
+                    <div class="bento-box col-2 fade-up delay-1">
+                        <div class="bento-inner gradient-bg">
+                            <h4>Encuentra por sabor</h4>
+                            <p>Al tener "comprensión real", si buscas "algo cítrico", encontrará tu tarta de limón aunque no hayas escrito la palabra limón en la búsqueda.</p>
+                        </div>
+                    </div>
                 </div>
             </div>
         </section>
 
-        <section class="bottom-cta reveal">
-            <div class="cta-card">
-                <h2>Comienza tu viaje culinario</h2>
-                <p>Únete y experimenta el futuro de la gestión de recetas.</p>
-                <a href="/recetario" class="btn-primary btn-large">Entrar ahora</a>
+        <!-- FAQ Section -->
+        <section id="faq" class="faq-section">
+            <div class="container fade-up">
+                <div class="section-header center">
+                    <h2>Preguntas Frecuentes</h2>
+                    <p>Todo lo que necesitas saber sobre el funcionamiento de Ratatui.</p>
+                </div>
+                
+                <div class="faq-grid">
+                    <details class="faq-item" name="faq" open>
+                        <summary>¿Qué necesito para utilizar Ratatui?</summary>
+                        <div class="faq-content">
+                            Al ser una aplicación que se ejecuta 100% de forma local por tu privacidad, necesitas instalar Ollama en tu ordenador. Es un proceso muy sencillo que tarda apenas unos minutos. Ratatui se encarga del resto conectándose a él de forma transparente.
+                        </div>
+                    </details>
+                    
+                    <details class="faq-item" name="faq">
+                        <summary>¿Mis recetas viajan a internet?</summary>
+                        <div class="faq-content">
+                            No. Absolutamente nada sale de tu ordenador. Tu base de datos es local y la inteligencia artificial (Llama 3 o el modelo que elijas) procesa todas tus conversaciones y recetas en tu propia máquina. Total privacidad.
+                        </div>
+                    </details>
+                    
+                    <details class="faq-item" name="faq">
+                        <summary>¿Tengo que pagar alguna suscripción mensual?</summary>
+                        <div class="faq-content">
+                            Al ejecutarse en tu propio hardware y no depender de servicios externos en la nube como OpenAI (ChatGPT), no hay costes mensuales por uso de la IA. Cocina, extrae recetas y chatea de forma ilimitada y gratuita.
+                        </div>
+                    </details>
+                    
+                    <details class="faq-item" name="faq">
+                        <summary>¿Cómo extrae las recetas la IA?</summary>
+                        <div class="faq-content">
+                            Ratatui utiliza su modelo de IA interno para leer cualquier bloque de texto (como la larga historia que cuentan los blogs de cocina antes de la receta real). La IA entiende el contexto, encuentra los ingredientes y los pasos, y lo formatea en una lista limpia automáticamente para tu recetario.
+                        </div>
+                    </details>
+                </div>
+            </div>
+        </section>
+
+        <!-- Final CTA con Lista Anticipada -->
+        <section class="cta-section">
+            <div class="container">
+                <div class="cta-banner fade-up">
+                    <div class="cta-content">
+                        <h2>El límite es tu despensa.</h2>
+                        <p>Únete a la beta cerrada y sé de los primeros en experimentar el futuro de la gestión culinaria.</p>
+                        
+                        <form class="waitlist-form dark-mode" onsubmit="event.preventDefault(); alert('¡Gracias por unirte a la lista de acceso anticipado!');">
+                            <div class="input-group">
+                                <i data-lucide="mail" class="input-icon"></i>
+                                <input type="email" placeholder="Tu mejor correo electrónico" required>
+                                <button type="submit" class="btn-primary">Asegurar mi plaza</button>
+                            </div>
+                        </form>
+                        
+                    </div>
+                </div>
             </div>
         </section>
     </main>
 
-    <footer>
-        <div class="footer-content">
-            <div class="brand">
-                <img src="/static/logo.png" alt="Ratatui" width="24">
-                <span>Ratatui</span>
+    <!-- Footer Pro -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-grid">
+                <div class="footer-brand-col">
+                    <div class="brand">
+                        <img src="/static/logo.png" alt="Ratatui">
+                        <span class="brand-text">Ratatui</span>
+                    </div>
+                    <p class="footer-desc">El recetario inteligente del futuro, alojado en tu propia cocina digital.</p>
+                </div>
+                
+                <div class="footer-links-col">
+                    <h4>Producto</h4>
+                    <a href="#how-it-works">Cómo funciona</a>
+                    <a href="#features">Beneficios</a>
+                    <a href="#faq">FAQ</a>
+                </div>
+                
+                <div class="footer-links-col">
+                    <h4>Tecnología</h4>
+                    <a href="#">Motor de IA (Ollama)</a>
+                    <a href="#">Búsqueda Vectorial</a>
+                    <a href="#">Privacidad Local</a>
+                </div>
+
+                <div class="footer-links-col">
+                    <h4>Comunidad</h4>
+                    <a href="https://github.com" target="_blank">GitHub</a>
+                    <a href="#">Discord</a>
+                    <a href="#">Twitter (X)</a>
+                </div>
             </div>
-            <div class="footer-links">
-                <span>Minimalista</span>
-                <span>•</span>
-                <span>Privado</span>
-                <span>•</span>
-                <span>Inteligente</span>
+            <div class="footer-bottom">
+                <p>&copy; 2026 Ratatui App. Todos los derechos reservados.</p>
+                <div class="legal-links">
+                    <a href="#">Política de Privacidad</a>
+                    <a href="#">Términos del Servicio</a>
+                </div>
             </div>
         </div>
     </footer>
 
     <script>
-        // Inicializar iconos
         lucide.createIcons();
 
-        // Reveal on scroll
-        const revealElements = document.querySelectorAll('.reveal');
-        
-        const revealCallback = (entries) => {
+        const navbar = document.getElementById('navbar');
+        window.addEventListener('scroll', () => {
+            if (window.scrollY > 20) {
+                navbar.classList.add('scrolled');
+            } else {
+                navbar.classList.remove('scrolled');
+            }
+        });
+
+        const observer = new IntersectionObserver((entries) => {
             entries.forEach(entry => {
                 if (entry.isIntersecting) {
-                    entry.target.classList.add('active');
+                    entry.target.classList.add('visible');
                 }
             });
-        };
-        
-        const observer = new IntersectionObserver(revealCallback, {
-            threshold: 0.1,
-            rootMargin: "0px 0px -50px 0px"
-        });
-        
-        revealElements.forEach(el => observer.observe(el));
-        
-        // Parallax simple para la galería
-        document.addEventListener('mousemove', (e) => {
-            const parallaxElements = document.querySelectorAll('.parallax');
-            const x = (e.clientX - window.innerWidth / 2) / 50;
-            const y = (e.clientY - window.innerHeight / 2) / 50;
-            
-            parallaxElements.forEach(el => {
-                const speed = el.getAttribute('data-speed');
-                el.style.transform = `translate(${x * speed}px, ${y * speed}px)`;
-            });
-        });
-        
-        // Activar header al cargar
-        setTimeout(() => {
-            document.querySelector('.hero').classList.add('active');
-        }, 100);
+        }, { threshold: 0.1 });
+
+        document.querySelectorAll('.fade-up').forEach((el) => observer.observe(el));
     </script>
 </body>
 </html>
