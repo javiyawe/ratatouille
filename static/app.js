@@ -9,7 +9,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const recipeList = document.getElementById('recipeList');
     const recipeDetail = document.getElementById('recipeDetail');
     const searchInput = document.getElementById('searchInput');
-    const sortSelect = document.getElementById('sortSelect');
+    const sortPills = document.querySelectorAll('.sort-pill');
+    let currentSort = 'alpha';
     
     const chatMessages = document.getElementById('chatMessages');
     const chatInput = document.getElementById('chatInput');
@@ -37,6 +38,16 @@ document.addEventListener('DOMContentLoaded', () => {
     let autoScroll      = true;
     let displayedChatId = null;
     let currentLayout   = localStorage.getItem('layout') || 'libro';  // 'libro' | 'chat'
+
+    // --- Sort Pills ---
+    sortPills.forEach(pill => {
+        pill.addEventListener('click', () => {
+            sortPills.forEach(p => p.classList.remove('active'));
+            pill.classList.add('active');
+            currentSort = pill.dataset.sort;
+            sortAndRender();
+        });
+    });
 
     // Muestra cantidad + unidad sin duplicar si la unidad ya va en la cantidad
     function fmtQty(ing) {
@@ -150,6 +161,38 @@ document.addEventListener('DOMContentLoaded', () => {
     layoutLibroBtn.onclick = () => setLayout('libro');
     layoutChatBtn.onclick  = () => setLayout('chat');
 
+    // --- Sidebar Collapse / Expand ---
+    const recipeSidebar = document.getElementById('recipeSidebar');
+    const sidebarCollapseBtn = document.getElementById('sidebarCollapseBtn');
+    const sidebarExpandBtn = document.getElementById('sidebarExpandBtn');
+    let sidebarCollapsed = localStorage.getItem('sidebar_collapsed') === 'true';
+
+    function applySidebarState() {
+        if (sidebarCollapsed) {
+            recipeSidebar.classList.add('collapsed');
+            if (sidebarExpandBtn) sidebarExpandBtn.style.display = 'flex';
+        } else {
+            recipeSidebar.classList.remove('collapsed');
+            if (sidebarExpandBtn) sidebarExpandBtn.style.display = 'none';
+        }
+    }
+    applySidebarState();
+
+    if (sidebarCollapseBtn) {
+        sidebarCollapseBtn.onclick = () => {
+            sidebarCollapsed = true;
+            localStorage.setItem('sidebar_collapsed', 'true');
+            applySidebarState();
+        };
+    }
+    if (sidebarExpandBtn) {
+        sidebarExpandBtn.onclick = () => {
+            sidebarCollapsed = false;
+            localStorage.setItem('sidebar_collapsed', 'false');
+            applySidebarState();
+        };
+    }
+
     // --- Navigation & Routing ---
 
     function navigate(path, state = {}) {
@@ -175,7 +218,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!updateUrl) return;
 
         if (mode === 'libro') {
-            navigate(currentSelectedId ? `/libro/recipe/${currentSelectedId}` : '/libro');
+            navigate(currentSelectedId ? `/recetario/recipe/${currentSelectedId}` : '/recetario');
         } else {
             navigate(currentChatId ? `/chat/${currentChatId}` : '/chat');
         }
@@ -204,7 +247,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             if (currentLayout !== 'libro') setLayout('libro', false);
 
-            if (!path.startsWith('/libro')) redirect('/libro');
+            if (!path.startsWith('/recetario')) redirect('/recetario');
 
             const recipeId = path.split('/recipe/')[1];
             if (recipeId) {
@@ -236,11 +279,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function sortAndRender() {
-        const val = sortSelect.value;
-        if (val === 'relevance') {
-            // En modo búsqueda: mantener orden por relevancia; en modo normal: alfabético
-            if (!isSearchMode) recipes.sort((a,b) => a.titulo.localeCompare(b.titulo));
-        } else if (val === 'alpha') {
+        const val = currentSort;
+        if (val === 'alpha') {
             recipes.sort((a,b) => a.titulo.localeCompare(b.titulo));
         } else if (val === 'time') {
             recipes.sort((a,b) => (a.tiempos?.total_minutos || 999) - (b.tiempos?.total_minutos || 999));
@@ -255,7 +295,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function renderList() {
-        const criteria = sortSelect.value;
+        const criteria = currentSort;
         let html = '';
         let lastL = '';
 
@@ -271,14 +311,18 @@ document.addEventListener('DOMContentLoaded', () => {
             html += `<div class="search-results-header">${recipes.length} resultado${recipes.length!==1?'s':''}</div>`;
         }
 
-        recipes.forEach(r => {
+        recipes.forEach((r, idx) => {
             if (!isSearchMode && criteria === 'alpha') {
-                const char = (r.titulo || '#')[0].toUpperCase();
+                let char = (r.titulo || '#')[0].toUpperCase();
+                char = char.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+                if (!/^[A-ZÑ]$/.test(char)) char = '#';
+                
                 if (char !== lastL) {
                     html += `<div class="letter-divider">${char}</div>`;
                     lastL = char;
                 }
             }
+            const delay = Math.min(idx * 30, 600);
 
             const tags = (r.etiquetas || []).slice(0,2).map(t =>
                 `<span class="recipe-tag">${t}</span>`).join('');
@@ -286,7 +330,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 ? `<span class="meta-time">⏱ ${r.tiempos.total_minutos} min</span>` : '';
 
             html += `
-                <div class="recipe-item ${currentSelectedId === r._id ? 'active' : ''}" onclick="viewRecipe('${r._id}')">
+                <div class="recipe-item ${currentSelectedId === r._id ? 'active' : ''}" data-id="${r._id}" onclick="viewRecipe('${r._id}')" style="animation-delay:${delay}ms">
                     <div class="recipe-item-header">
                         <h3>${r.titulo}</h3>
                         ${isFav(r._id) ? '<span class="list-star">★</span>' : ''}
@@ -302,26 +346,23 @@ document.addEventListener('DOMContentLoaded', () => {
         const alphabetIndex = document.getElementById('alphabetIndex');
         if (alphabetIndex) {
             if (criteria === 'alpha' && !isSearchMode && recipes.length > 0) {
-                alphabetIndex.style.opacity = '1';
-                alphabetIndex.style.pointerEvents = 'auto';
+                alphabetIndex.classList.add('visible');
 
-                const alphabet = 'ABCDEFGHIJKLMNÑOPQRSTUVWXYZ#'.split('');
+                const alphabet = '#ABCDEFGHIJKLMNÑOPQRSTUVWXYZ'.split('');
                 const existingLetters = new Set();
                 recipes.forEach(r => {
-                    const char = (r.titulo || '#')[0].toUpperCase();
-                    if (/^[A-ZÑ]$/.test(char)) {
-                        existingLetters.add(char);
-                    } else {
-                        existingLetters.add('#');
-                    }
+                    let char = (r.titulo || '#')[0].toUpperCase();
+                    char = char.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+                    if (!/^[A-ZÑ]$/.test(char)) char = '#';
+                    existingLetters.add(char);
                 });
 
                 alphabetIndex.innerHTML = alphabet.map(letter => {
-                    const isActive = existingLetters.has(letter);
-                    return `<span class="alphabet-letter ${isActive ? 'active' : ''}" data-letter="${letter}">${letter}</span>`;
+                    const hasItems = existingLetters.has(letter);
+                    return `<span class="alphabet-letter ${hasItems ? 'has-items' : ''}" data-letter="${letter}">${letter}</span>`;
                 }).join('');
 
-                alphabetIndex.querySelectorAll('.alphabet-letter.active').forEach(btn => {
+                alphabetIndex.querySelectorAll('.alphabet-letter.has-items').forEach(btn => {
                     btn.onclick = (e) => {
                         const letter = e.target.getAttribute('data-letter');
                         const dividers = Array.from(recipeList.querySelectorAll('.letter-divider'));
@@ -339,8 +380,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     };
                 });
             } else {
-                alphabetIndex.style.opacity = '0';
-                alphabetIndex.style.pointerEvents = 'none';
+                alphabetIndex.classList.remove('visible');
                 alphabetIndex.innerHTML = '';
             }
         }
@@ -348,13 +388,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
     window.viewRecipe = async (id, updateUrl = true) => {
         if (updateUrl) {
-            navigate(`/libro/recipe/${id}`);
+            navigate(`/recetario/recipe/${id}`);
             return;
         }
         const r = recipes.find(x => x._id === id);
         if (!r) return;
         currentSelectedId = id;
-        renderList();
+        
+        // Update active class without re-rendering to preserve scroll
+        document.querySelectorAll('.recipe-item').forEach(el => el.classList.remove('active'));
+        const activeItem = document.querySelector(`.recipe-item[data-id="${id}"]`);
+        if (activeItem) activeItem.classList.add('active');
 
         recipeDetail.scrollTop = 0;   // resetear antes de pintar para que no herede scroll previo
         recipeDetail.innerHTML = `
@@ -996,9 +1040,8 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             const data = await res.json();
             recipes = data.recipes || [];
-            if (sortSelect.value === 'alpha' || sortSelect.value === 'relevance') {
-                sortSelect.value = 'relevance';
-            }
+            // In search mode, just render in the order returned (relevance)
+            // No need to change sort
             sortAndRender();
         } catch (e) {
             recipeList.innerHTML = '<div style="padding:2rem;color:#e74c3c;">Error en la búsqueda.</div>';
@@ -1006,7 +1049,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     searchInput.addEventListener('input', debounce(runSearch, 350));
-    sortSelect.onchange = sortAndRender;
     sendChat.onclick = handleChat;
     newChatBtn.onclick = createNewChat;
     chatInput.addEventListener('input', () => autoResize(chatInput));
@@ -1339,84 +1381,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
             `;
             document.querySelectorAll('.recipe-item').forEach(el => el.classList.remove('active'));
-            navigate('/libro');
+            navigate('/recetario');
         };
     }
 
-    // --- Redimensionamiento y Ocultamiento de Barra Lateral ---
-    const recipeSidebar = document.getElementById('recipeSidebar');
-    const sidebarResizer = document.getElementById('sidebarResizer');
-    const sidebarToggleBtn = document.getElementById('sidebarToggleBtn');
-
-    let isDragging = false;
-    let sidebarWidth = parseInt(localStorage.getItem('sidebar_width')) || 380;
-    let sidebarCollapsed = localStorage.getItem('sidebar_collapsed') === 'true';
-
-    function initSidebarState() {
-        if (recipeSidebar) {
-            if (sidebarCollapsed) {
-                recipeSidebar.classList.add('collapsed');
-                if (sidebarToggleBtn) sidebarToggleBtn.textContent = '▶';
-            } else {
-                recipeSidebar.classList.remove('collapsed');
-                recipeSidebar.style.width = `${sidebarWidth}px`;
-                document.documentElement.style.setProperty('--sidebar-w', `${sidebarWidth}px`);
-                if (sidebarToggleBtn) sidebarToggleBtn.textContent = '◀';
-            }
-        }
-    }
-    initSidebarState();
-
-    if (sidebarResizer) {
-        sidebarResizer.addEventListener('mousedown', (e) => {
-            if (e.target === sidebarToggleBtn) return;
-            if (sidebarCollapsed) return;
-
-            isDragging = true;
-            document.body.style.cursor = 'col-resize';
-            sidebarResizer.classList.add('dragging');
-            document.body.style.userSelect = 'none';
-        });
-
-        document.addEventListener('mousemove', (e) => {
-            if (!isDragging) return;
-
-            const containerRect = document.querySelector('.split-layout').getBoundingClientRect();
-            const newWidth = e.clientX - containerRect.left;
-
-            if (newWidth >= 260 && newWidth <= 550) {
-                sidebarWidth = newWidth;
-                recipeSidebar.style.width = `${sidebarWidth}px`;
-                document.documentElement.style.setProperty('--sidebar-w', `${sidebarWidth}px`);
-                localStorage.setItem('sidebar_width', sidebarWidth);
-            }
-        });
-
-        document.addEventListener('mouseup', () => {
-            if (isDragging) {
-                isDragging = false;
-                document.body.style.cursor = '';
-                sidebarResizer.classList.remove('dragging');
-                document.body.style.userSelect = '';
-            }
-        });
-    }
-
-    if (sidebarToggleBtn) {
-        sidebarToggleBtn.onclick = (e) => {
-            e.stopPropagation();
-            sidebarCollapsed = !sidebarCollapsed;
-            localStorage.setItem('sidebar_collapsed', sidebarCollapsed);
-
-            if (sidebarCollapsed) {
-                recipeSidebar.classList.add('collapsed');
-                sidebarToggleBtn.textContent = '▶';
-            } else {
-                recipeSidebar.classList.remove('collapsed');
-                recipeSidebar.style.width = `${sidebarWidth}px`;
-                document.documentElement.style.setProperty('--sidebar-w', `${sidebarWidth}px`);
-                sidebarToggleBtn.textContent = '◀';
-            }
-        };
-    }
+    // Sidebar collapse/expand logic is now initialized above, near Boot
 });

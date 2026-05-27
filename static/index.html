@@ -33,34 +33,31 @@
             <div class="split-layout">
                 <aside class="sidebar" id="recipeSidebar">
                     <div class="sidebar-top">
-                        <div class="sidebar-info">
+                        <div class="sidebar-header-row">
                             <span id="recipeCount" class="count-badge">Cargando...</span>
+                            <button id="sidebarCollapseBtn" class="sidebar-collapse-btn" title="Ocultar barra lateral">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 19l-7-7 7-7"/><path d="M18 19l-7-7 7-7"/></svg>
+                            </button>
                         </div>
                         <div class="search-wrapper">
-                            <input type="text" id="searchInput" placeholder="Buscar por ingrediente o técnica...">
-                            <span class="search-glow"></span>
+                            <input type="text" id="searchInput" placeholder="Buscar receta...">
                         </div>
-                        <div class="filter-bar">
-                            <select id="sortSelect">
-                                <option value="relevance">Relevancia</option>
-                                <option value="alpha">Alfabético</option>
-                                <option value="favs">Favoritos ★</option>
-                                <option value="time">Tiempo</option>
-                                <option value="difficulty">Dificultad</option>
-                            </select>
+                        <div class="sort-pills">
+                            <button class="sort-pill active" data-sort="alpha">A-Z</button>
+                            <button class="sort-pill" data-sort="favs">★</button>
+                            <button class="sort-pill" data-sort="time">⏱</button>
+                            <button class="sort-pill" data-sort="difficulty">Nivel</button>
                         </div>
                     </div>
                     <div class="sidebar-list-wrapper">
-                        <div id="recipeList" class="recipe-scroll-list">
-                            <!-- JS renders letter headers and recipe items here -->
-                        </div>
+                        <div id="recipeList" class="recipe-scroll-list"></div>
                         <div id="alphabetIndex" class="alphabet-index"></div>
                     </div>
                 </aside>
 
-                <div class="sidebar-resizer" id="sidebarResizer">
-                    <button id="sidebarToggleBtn" class="sidebar-toggle-btn" title="Ocultar barra lateral">◀</button>
-                </div>
+                <button id="sidebarExpandBtn" class="sidebar-expand-btn" title="Mostrar barra lateral" style="display:none">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 5l7 7-7 7"/><path d="M6 5l7 7-7 7"/></svg>
+                </button>
 
                 <article class="content-viewer">
                     <div id="recipeDetail" class="detail-paper empty">
