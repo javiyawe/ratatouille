@@ -36,9 +36,7 @@ app.include_router(training_router)
 # Archivos estáticos
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-@app.get("/css3d")
-async def css3d_page():
-    return FileResponse("static/css3d.html")
+
 
 @app.get("/")
 async def landing():
